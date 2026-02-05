@@ -12,256 +12,508 @@
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: #fff;
-      padding: 20px;
+      font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+      background: rgba(10, 15, 20, 0.95);
+      color: #e0e0e0;
+      padding: 0;
+      overflow: hidden;
+      -webkit-app-region: drag; /* ツールバー無しでもドラッグ可能 */
+    }
+
+    button, input, select, textarea, details {
+      -webkit-app-region: no-drag; /* これらの要素はドラッグ不可 */
     }
 
     .container {
-      max-width: 1000px;
-      margin: 0 auto;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 15px;
     }
 
-    h1 {
-      text-align: center;
-      margin-bottom: 30px;
-      font-size: 2.5rem;
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 15px;
+      background: rgba(20, 25, 30, 0.8);
+      border: 1px solid rgba(0, 255, 170, 0.2);
+      border-radius: 6px;
+      margin-bottom: 10px;
     }
 
-    .status-card {
+    .header h1 {
+      font-size: 1.2rem;
+      font-weight: 500;
+      color: #00ffaa;
+      letter-spacing: 1px;
+    }
+
+    .header-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    .header-buttons button {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #888;
+      padding: 6px 12px;
+      font-size: 0.85rem;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .header-buttons button:hover {
       background: rgba(255, 255, 255, 0.1);
-      backdrop-filter: blur(10px);
-      border-radius: 15px;
-      padding: 30px;
-      margin-bottom: 20px;
-    }
-
-    .status-badge {
-      display: inline-block;
-      padding: 8px 16px;
-      border-radius: 20px;
-      font-weight: bold;
-      margin-bottom: 15px;
-    }
-
-    .status-idle {
-      background: rgba(255, 255, 255, 0.2);
-    }
-
-    .status-standby {
-      background: rgba(255, 193, 7, 0.8);
-      color: #000;
-    }
-
-    .status-active {
-      background: rgba(76, 175, 80, 0.8);
       color: #fff;
     }
 
-    .controls {
+    .status-bar {
       display: flex;
+      align-items: center;
       gap: 15px;
-      margin-top: 20px;
+      padding: 12px 15px;
+      background: rgba(20, 25, 30, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 6px;
+      margin-bottom: 10px;
+      font-size: 0.9rem;
+    }
+
+    .status-indicator {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #666;
+      animation: pulse 2s infinite;
+    }
+
+    .status-indicator.active {
+      background: #00ffaa;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .controls {
+      background: rgba(20, 25, 30, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 6px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+
+    details summary {
+      padding: 12px 15px;
+      cursor: pointer;
+      user-select: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: #888;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    details summary::-webkit-details-marker {
+      display: none;
+    }
+
+    details summary::before {
+      content: '▶';
+      font-size: 0.7rem;
+      transition: transform 0.2s;
+    }
+
+    details[open] summary::before {
+      transform: rotate(90deg);
+    }
+
+    details summary:hover {
+      color: #fff;
+    }
+
+    .controls-content {
+      padding: 15px;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 0.85rem;
+      color: #888;
+      font-weight: 500;
+    }
+
+    input[type="text"], select {
+      width: 100%;
+      padding: 8px 12px;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      color: #e0e0e0;
+      font-size: 0.9rem;
+      font-family: inherit;
+      transition: border-color 0.2s;
+    }
+
+    input[type="text"]:focus, select:focus {
+      outline: none;
+      border-color: #00ffaa;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
     }
 
     button {
       flex: 1;
-      padding: 15px 30px;
-      font-size: 1.1rem;
+      padding: 10px;
+      font-size: 0.95rem;
       border: none;
-      border-radius: 10px;
+      border-radius: 4px;
       cursor: pointer;
-      transition: all 0.3s;
-      font-weight: bold;
-    }
-
-    button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+      font-weight: 500;
+      font-family: inherit;
+      transition: all 0.2s;
     }
 
     .btn-start {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
+      background: #00ffaa;
+      color: #0a0f14;
+    }
+
+    .btn-start:hover:not(:disabled) {
+      background: #00dd99;
     }
 
     .btn-stop {
-      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-      color: white;
+      background: #ff4757;
+      color: #fff;
     }
 
-    .transcript-area {
-      background: rgba(255, 255, 255, 0.1);
-      backdrop-filter: blur(10px);
-      border-radius: 15px;
-      padding: 20px;
-      min-height: 300px;
-      max-height: 500px;
+    .btn-stop:hover:not(:disabled) {
+      background: #ee3344;
+    }
+
+    button:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    .main-area {
+      flex: 1;
+      display: flex;
+      gap: 10px;
+      min-height: 0;
+    }
+
+    .transcript-panel {
+      flex: 2;
+      display: flex;
+      flex-direction: column;
+      background: rgba(20, 25, 30, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 10px 15px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: #888;
+    }
+
+    .transcript-content {
+      flex: 1;
       overflow-y: auto;
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
 
-    .transcript-item {
-      margin-bottom: 15px;
-      padding: 10px;
-      background: rgba(255, 255, 255, 0.05);
+    .transcript-bubble {
+      max-width: 80%;
+      padding: 8px 12px;
       border-radius: 8px;
-    }
-
-    .transcript-speaker {
-      font-weight: bold;
-      color: #ffd700;
-      margin-bottom: 5px;
-    }
-
-    .transcript-mic {
-      font-weight: bold;
-      color: #87ceeb;
-      margin-bottom: 5px;
-    }
-
-    .footer {
-      text-align: center;
-      margin-top: 30px;
-      opacity: 0.7;
       font-size: 0.9rem;
+      line-height: 1.5;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .transcript-bubble.speaker {
+      align-self: flex-start;
+      background: rgba(0, 255, 170, 0.08);
+      border-left: 3px solid #00ffaa;
+    }
+
+    .transcript-bubble.mic {
+      align-self: flex-end;
+      background: rgba(100, 150, 255, 0.08);
+      border-right: 3px solid #6496ff;
+    }
+
+    .bubble-label {
+      font-size: 0.7rem;
+      opacity: 0.6;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .bubble-label.speaker { color: #00ffaa; }
+    .bubble-label.mic { color: #6496ff; }
+
+    .advice-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: rgba(20, 25, 30, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .advice-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 15px;
+    }
+
+    .advice-item {
+      background: rgba(255, 200, 100, 0.05);
+      border-left: 3px solid #ffc864;
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      font-size: 0.85rem;
+      line-height: 1.6;
+    }
+
+    .advice-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.7rem;
+      opacity: 0.6;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    .empty-state {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #444;
+      font-size: 0.85rem;
+    }
+
+    /* スクロールバー */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.2);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    /* モーダル共通スタイル */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.85);
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    .modal-content {
+      background: rgba(15, 20, 25, 0.98);
+      border: 1px solid rgba(0, 255, 170, 0.2);
+      width: 90%;
+      max-width: 1000px;
+      height: 80%;
+      border-radius: 8px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .modal-header h2 {
+      font-size: 1.2rem;
+      color: #00ffaa;
+    }
+
+    .close-btn {
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 1.5rem;
+      cursor: pointer;
+      padding: 0;
+      width: 30px;
+      height: 30px;
+    }
+
+    .close-btn:hover {
+      color: #fff;
     }
   </style>
 </head>
 <body>
-  <!-- Meeting Detection Banner -->
-  <div id="detectionBanner" style="display: none; position: fixed; top: 0; left: 0; right: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px; text-align: center; z-index: 2000; box-shadow: 0 2px 10px rgba(0,0,0,0.3);">
-    <div style="display: flex; justify-content: center; align-items: center; gap: 20px;">
-      <span id="detectionMessage" style="font-size: 1.1rem; font-weight: bold;">🎯 会議が検出されました</span>
-      <button id="startDetectedMeeting" style="background: #48bb78; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">開始する</button>
-      <button id="ignoreDetectedMeeting" style="background: rgba(255,255,255,0.2); color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;">無視する</button>
-    </div>
-  </div>
-
   <div class="container">
-    <h1>🎙️ Meeting Assistant</h1>
-    
-    <div style="position: absolute; top: 20px; right: 20px; display: flex; gap: 10px;">
-      <button id="historyBtn" style="background: rgba(255,255,255,0.2); padding: 8px 15px; font-size: 0.9rem;">
-        📜 履歴
-      </button>
-      <button id="settingsBtn" style="background: rgba(255,255,255,0.2); padding: 8px 15px; font-size: 0.9rem;">
-        ⚙️ 設定
-      </button>
-    </div>
-    
-    <div class="status-card">
-      <span class="status-badge status-idle" id="statusBadge">待機中 (Idle)</span>
-      <h2>システムステータス</h2>
-      <p id="statusText">会議を待機しています...</p>
-      
-      <div class="controls">
-        <button class="btn-start" id="startBtn">会議を開始</button>
-        <button class="btn-stop" id="stopBtn" disabled>会議を終了</button>
-      </div>
-      
-      <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.2);">
-        <label style="display: block; margin-bottom: 10px; font-weight: bold;">ミーティングタイトル</label>
-        <input type="text" id="meetingTitle" placeholder="例: 週次定例、営業商談、採用面接..." style="width: 100%; padding: 10px; border-radius: 5px; border: none; background: rgba(255,255,255,0.2); color: white; font-size: 1rem;">
-      </div>
-
-      <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.2);">
-        <label style="display: block; margin-bottom: 10px; font-weight: bold;">会議種別（AIアドバイス用）</label>
-        <select id="meetingTypeSelect" style="width: 100%; padding: 10px; border-radius: 5px; border: none; background: rgba(255,255,255,0.2); color: white; font-size: 1rem;">
-          <option value="">選択してください（アドバイスなし）</option>
-        </select>
-      </div>
-
-      <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.2);">
-        <label style="display: flex; align-items: center; cursor: pointer;">
-          <input type="checkbox" id="transcribeCheckbox" style="margin-right: 10px; width: 20px; height: 20px;">
-          <span>文字起こしを有効にする（Whisper API）</span>
-        </label>
+    <!-- ヘッダー -->
+    <div class="header">
+      <h1>⚡ MEETING_ASSISTANT</h1>
+      <div class="header-buttons">
+        <button id="historyBtn">履歴</button>
+        <button id="settingsBtn">設定</button>
       </div>
     </div>
 
-    <div style="display: flex; gap: 20px; min-height: 400px; max-height: 600px;">
-      <!-- 左側: 文字起こし -->
-      <div style="flex: 2; display: flex; flex-direction: column;">
-        <h3>文字起こし</h3>
-        <div class="transcript-area" id="transcriptArea" style="flex: 1; max-height: none;">
-          <p style="text-align: center; opacity: 0.5;">文字起こしがここに表示されます</p>
+    <!-- ステータスバー -->
+    <div class="status-bar">
+      <div class="status-indicator" id="statusIndicator"></div>
+      <span id="statusText">待機中</span>
+    </div>
+
+    <!-- コントロールパネル（折りたたみ可能） -->
+    <details class="controls" id="controlsDetails" open>
+      <summary>コントロール</summary>
+      <div class="controls-content">
+        <div class="form-group">
+          <label>ミーティングタイトル</label>
+          <input type="text" id="meetingTitle" placeholder="例: 週次定例、営業商談、採用面接...">
+        </div>
+
+        <div class="form-group">
+          <label>会議種別（AIアドバイス用）</label>
+          <select id="meetingTypeSelect">
+            <option value="">選択してください（アドバイスなし）</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="checkbox-group">
+            <input type="checkbox" id="transcribeCheckbox" checked>
+            <span>文字起こしを有効にする</span>
+          </label>
+        </div>
+
+        <div class="button-group">
+          <button class="btn-start" id="startBtn">会議を開始</button>
+          <button class="btn-stop" id="stopBtn" disabled>会議を終了</button>
         </div>
       </div>
-      
-      <!-- 右側: AIアドバイス -->
-      <div style="flex: 1; display: flex; flex-direction: column;">
-        <h3>🤖 AIアドバイス</h3>
-        <div id="adviceArea" style="flex: 1; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border-radius: 15px; padding: 20px; overflow-y: auto;">
-          <p style="text-align: center; opacity: 0.5;">ここにアドバイスが表示されます</p>
+    </details>
+
+    <!-- メインエリア -->
+    <div class="main-area">
+      <!-- 文字起こしパネル -->
+      <div class="transcript-panel">
+        <div class="panel-header">TRANSCRIPT</div>
+        <div class="transcript-content" id="transcriptArea">
+          <div class="empty-state">文字起こしがここに表示されます</div>
         </div>
       </div>
-    </div>
 
-    <div class="footer">
-      Meeting Assistant v0.1.0 - Powered by Whisper & Electron
+      <!-- AIアドバイスパネル -->
+      <div class="advice-panel">
+        <div class="panel-header">AI_ADVICE</div>
+        <div class="advice-content" id="adviceArea">
+          <div class="empty-state">アドバイスがここに表示されます</div>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- Settings Modal -->
-  <div id="settingsModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;">
-    <div style="background: #2d3748; width: 90%; max-width: 1000px; height: 80%; border-radius: 10px; padding: 20px; display: flex; flex-direction: column; color: white;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">
-        <h2>マスタ管理</h2>
-        <button id="closeSettingsBtn" style="background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer;">&times;</button>
+  <!-- 履歴モーダル -->
+  <div id="historyModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>履歴</h2>
+        <button class="close-btn" id="closeHistoryBtn">&times;</button>
       </div>
-      
-      <div style="display: flex; flex: 1; gap: 20px; overflow: hidden;">
-        <!-- Left Pane: Meeting Types -->
-        <div style="flex: 1; display: flex; flex-direction: column; border-right: 1px solid rgba(255,255,255,0.1); padding-right: 20px;">
+      <div style="flex: 1; overflow: auto;">
+        <div id="sessionList"></div>
+        <div id="historyDetailContent"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 設定モーダル -->
+  <div id="settingsModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>設定</h2>
+        <button class="close-btn" id="closeSettingsBtn">&times;</button>
+      </div>
+      <div style="flex: 1; display: flex; gap: 20px;">
+        <div style="flex: 1;">
           <h3>会議種別</h3>
-          <div id="meetingTypeList" style="flex: 1; overflow-y: auto; margin: 10px 0; background: rgba(0,0,0,0.2); border-radius: 5px; padding: 10px;">
-            <!-- List items will go here -->
-          </div>
-          <div style="display: flex; gap: 10px;">
-            <input type="text" id="newTypeName" placeholder="種別名" style="flex: 1; padding: 8px; border-radius: 4px; border: none;">
-            <button id="addTypeBtn" style="background: #48bb78; color: white; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer;">追加</button>
-          </div>
+          <div id="meetingTypeList"></div>
+          <input type="text" id="newTypeName" placeholder="種別名">
+          <button id="addTypeBtn">追加</button>
         </div>
-        
-        <!-- Right Pane: Prompts -->
-        <div style="flex: 2; display: flex; flex-direction: column;">
-          <h3 id="promptsHeader">プロンプト設定 (選択してください)</h3>
-          <div id="promptsList" style="flex: 1; overflow-y: auto; margin: 10px 0; background: rgba(0,0,0,0.2); border-radius: 5px; padding: 10px;">
-            <!-- Prompts will go here -->
-          </div>
-          <div id="promptForm" style="display: none; flex-direction: column; gap: 10px; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px;">
-            <input type="text" id="newTrigger" placeholder="トリガー条件 (例: 価格が高いと言われた時)" style="padding: 8px; border-radius: 4px; border: none;">
-            <textarea id="newAction" placeholder="AIへの指示 (例: ROIを強調する提案をして)" style="padding: 8px; border-radius: 4px; border: none; height: 60px;"></textarea>
-            <button id="addPromptBtn" style="background: #48bb78; color: white; padding: 8px; border: none; border-radius: 4px; cursor: pointer;">プロンプトを追加</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- History Modal -->
-  <div id="historyModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;">
-    <div style="background: #2d3748; width: 90%; max-width: 1000px; height: 90%; border-radius: 10px; padding: 20px; display: flex; flex-direction: column; color: white;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">
-        <h2>会議履歴</h2>
-        <button id="closeHistoryBtn" style="background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer;">&times;</button>
-      </div>
-      
-      <div style="display: flex; flex: 1; gap: 20px; overflow: hidden;">
-        <!-- Left Pane: Session List -->
-        <div style="flex: 1; display: flex; flex-direction: column; border-right: 1px solid rgba(255,255,255,0.1); padding-right: 20px;">
-          <h3>過去の会議</h3>
-          <div id="sessionList" style="flex: 1; overflow-y: auto; margin: 10px 0; background: rgba(0,0,0,0.2); border-radius: 5px; padding: 10px;">
-            <!-- Session items -->
-          </div>
-        </div>
-        
-        <!-- Right Pane: Details -->
-        <div style="flex: 2; display: flex; flex-direction: column;">
-          <h3 id="historyDetailHeader">詳細</h3>
-          <div id="historyDetailContent" style="flex: 1; overflow-y: auto; margin: 10px 0; background: rgba(0,0,0,0.2); border-radius: 5px; padding: 20px;">
-            <p style="text-align: center; opacity: 0.5;">左側から会議を選択してください</p>
+        <div style="flex: 2;">
+          <h3 id="promptsHeader">プロンプト</h3>
+          <div id="promptsList"></div>
+          <div id="promptForm" style="display: none;">
+            <input type="text" id="newTrigger" placeholder="トリガー条件">
+            <textarea id="newAction" placeholder="AIへの指示"></textarea>
+            <button id="addPromptBtn">追加</button>
           </div>
         </div>
       </div>
@@ -271,419 +523,26 @@
   <script>
     const { ipcRenderer } = require('electron');
 
-    // --- Meeting Detection Logic ---
-    const detectionBanner = document.getElementById('detectionBanner');
-    const detectionMessage = document.getElementById('detectionMessage');
-    const startDetectedBtn = document.getElementById('startDetectedMeeting');
-    const ignoreDetectedBtn = document.getElementById('ignoreDetectedMeeting');
-    
-    let detectedMeetingInfo = null;
-
-    // メインプロセスからの会議検出通知を受信
-    ipcRenderer.on('meeting-detected', (event, data) => {
-      console.log('Meeting detected:', data);
-      detectedMeetingInfo = data;
-      
-      detectionMessage.textContent = `🎯 ${data.app} が検出されました`;
-      detectionBanner.style.display = 'block';
-    });
-
-    ignoreDetectedBtn.addEventListener('click', () => {
-      detectionBanner.style.display = 'none';
-      detectedMeetingInfo = null;
-    });
-
-    startDetectedBtn.addEventListener('click', async () => {
-      detectionBanner.style.display = 'none';
-      
-      // 自動的に文字起こしを有効にして開始
-      const transcribeCheckbox = document.getElementById('transcribeCheckbox');
-      const meetingTypeSelect = document.getElementById('meetingTypeSelect');
-      const meetingTitle = document.getElementById('meetingTitle');
-      
-      transcribeCheckbox.checked = true;
-      
-      // タイトルが未入力の場合、カレンダーから取得を試みる
-      if (!meetingTitle.value) {
-        try {
-          const calResponse = await fetch('http://localhost:8000/calendar/current');
-          const calData = await calResponse.json();
-          if (calData.success && calData.event) {
-            meetingTitle.value = calData.event.summary;
-          } else if (detectedMeetingInfo) {
-            // カレンダーにイベントがない場合、検知されたアプリ名
-            meetingTitle.value = `${detectedMeetingInfo.app} ミーティング`;
-          }
-        } catch (error) {
-          // カレンダー取得失敗時は検知されたアプリ名
-          if (detectedMeetingInfo) {
-            meetingTitle.value = `${detectedMeetingInfo.app} ミーティング`;
-          }
-        }
-      }
-      
-      const options = {
-        transcribe_enabled: true,
-        meeting_type_id: meetingTypeSelect.value ? parseInt(meetingTypeSelect.value) : null,
-        title: meetingTitle.value || '無題の会議'
-      };
-      
-      try {
-        const result = await startRecordingCommon(options);
-        
-        if (result.success) {
-          isRecording = true;
-          updateStatus('active');
-          const startBtn = document.getElementById('startBtn');
-          const stopBtn = document.getElementById('stopBtn');
-          startBtn.disabled = true;
-          stopBtn.disabled = false;
-          transcribeCheckbox.disabled = true;
-          // タイトルと会議種別は録音中も変更可能（disabledにしない）
-          
-          statusCard.innerHTML = `
-            <div class="status-indicator" style="background: #48bb78;"></div>
-            <strong>録音中...</strong>
-            <span style="opacity: 0.8;">会議: ${detectedMeetingInfo?.app || 'Unknown'}</span>
-          `;
-        }
-      } catch (error) {
-        console.error('Failed to start:', error);
-        alert('開始に失敗しました: ' + error.message);
-      }
-    });
-
-    // --- Main UI Logic ---
     let isRecording = false;
+    let ws = null;
 
-    const statusCard = document.querySelector('.status-card');
-    const statusBadge = document.getElementById('statusBadge');
+    const statusIndicator = document.getElementById('statusIndicator');
     const statusText = document.getElementById('statusText');
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const transcriptArea = document.getElementById('transcriptArea');
-    const adviceArea = document.getElementById('adviceArea'); // 追加
+    const adviceArea = document.getElementById('adviceArea');
     const transcribeCheckbox = document.getElementById('transcribeCheckbox');
     const meetingTypeSelect = document.getElementById('meetingTypeSelect');
     const meetingTitle = document.getElementById('meetingTitle');
-    
-    // --- History UI Logic ---
-    const historyBtn = document.getElementById('historyBtn');
-    const historyModal = document.getElementById('historyModal');
-    const closeHistoryBtn = document.getElementById('closeHistoryBtn');
-    const sessionList = document.getElementById('sessionList');
-    const historyDetailContent = document.getElementById('historyDetailContent');
-    const historyDetailHeader = document.getElementById('historyDetailHeader');
+    const controlsDetails = document.getElementById('controlsDetails');
 
-    historyBtn.addEventListener('click', () => {
-      historyModal.style.display = 'flex';
-      renderHistoryList();
-    });
-
-    closeHistoryBtn.addEventListener('click', () => {
-      historyModal.style.display = 'none';
-    });
-
-    async function renderHistoryList() {
-      const response = await fetch('http://localhost:8000/history');
-      const data = await response.json();
-      
-      sessionList.innerHTML = '';
-      data.sessions.forEach(session => {
-        const item = document.createElement('div');
-        item.style.padding = '10px';
-        item.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
-        item.style.cursor = 'pointer';
-        
-        const title = document.createElement('div');
-        title.style.fontWeight = 'bold';
-        title.textContent = session.title || '無題の会議';
-        
-        const date = document.createElement('div');
-        date.style.fontSize = '0.8rem';
-        date.style.opacity = '0.7';
-        date.textContent = new Date(session.start_time).toLocaleString();
-        
-        const type = document.createElement('div');
-        type.style.fontSize = '0.8rem';
-        type.style.color = '#90cdf4';
-        type.textContent = session.meeting_type_name || '種別なし';
-        
-        item.appendChild(title);
-        item.appendChild(date);
-        item.appendChild(type);
-        
-        item.onclick = () => renderHistoryDetail(session.id);
-        sessionList.appendChild(item);
-      });
-    }
-
-    async function renderHistoryDetail(sessionId) {
-      const response = await fetch(`http://localhost:8000/history/${sessionId}`);
-      const data = await response.json();
-      
-      historyDetailHeader.textContent = `${data.session.title} の詳細`;
-      historyDetailContent.innerHTML = '';
-      
-      // 文字起こしとアドバイスを時系列でマージして表示
-      const allEvents = [
-        ...data.transcripts.map(t => ({...t, type: 'transcript'})),
-        ...data.advices.map(a => ({...a, type: 'advice'}))
-      ].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-      
-      allEvents.forEach(event => {
-        const item = document.createElement('div');
-        item.style.marginBottom = '15px';
-        item.style.padding = '10px';
-        item.style.borderRadius = '5px';
-        
-        const time = document.createElement('div');
-        time.style.fontSize = '0.7rem';
-        time.style.opacity = '0.5';
-        time.style.marginBottom = '5px';
-        time.textContent = new Date(event.timestamp).toLocaleTimeString();
-        
-        item.appendChild(time);
-        
-        if (event.type === 'transcript') {
-          item.style.background = 'rgba(255,255,255,0.05)';
-          const label = document.createElement('div');
-          label.style.fontWeight = 'bold';
-          label.style.marginBottom = '5px';
-          label.textContent = event.source === 'speaker' ? '🔊 Speaker' : '🎤 Microphone';
-          label.style.color = event.source === 'speaker' ? '#ffd700' : '#87ceeb';
-          
-          const text = document.createElement('div');
-          text.textContent = event.text;
-          
-          item.appendChild(label);
-          item.appendChild(text);
-        } else {
-          item.style.background = 'rgba(72, 187, 120, 0.1)';
-          item.style.borderLeft = '3px solid #48bb78';
-          
-          const label = document.createElement('div');
-          label.style.fontWeight = 'bold';
-          label.style.color = '#48bb78';
-          label.style.marginBottom = '5px';
-          label.textContent = `💡 AI Advice (${event.trigger_condition})`;
-          
-          const text = document.createElement('div');
-          text.textContent = event.advice_text;
-          
-          item.appendChild(label);
-          item.appendChild(text);
-        }
-        
-        historyDetailContent.appendChild(item);
-      });
-    }
-
-    // --- Settings UI Logic ---
-    const settingsBtn = document.getElementById('settingsBtn');
-    const settingsModal = document.getElementById('settingsModal');
-    const closeSettingsBtn = document.getElementById('closeSettingsBtn');
-    const meetingTypeList = document.getElementById('meetingTypeList');
-    const promptsList = document.getElementById('promptsList');
-    const promptsHeader = document.getElementById('promptsHeader');
-    const promptForm = document.getElementById('promptForm');
-    
-    let selectedTypeId = null;
-
-    settingsBtn.addEventListener('click', () => {
-      settingsModal.style.display = 'flex';
-      renderMeetingTypes();
-    });
-
-    closeSettingsBtn.addEventListener('click', () => {
-      settingsModal.style.display = 'none';
-      loadMeetingTypes(); // Refresh main dropdown
-    });
-
-    // 会議種別一覧のレンダリング
-    async function renderMeetingTypes() {
-      const response = await fetch('http://localhost:8000/meeting-types');
-      const data = await response.json();
-      
-      meetingTypeList.innerHTML = '';
-      data.meeting_types.forEach(type => {
-        const item = document.createElement('div');
-        item.style.padding = '10px';
-        item.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
-        item.style.cursor = 'pointer';
-        item.style.display = 'flex';
-        item.style.justifyContent = 'space-between';
-        
-        if (selectedTypeId === type.id) {
-          item.style.background = 'rgba(66, 153, 225, 0.5)';
-        }
-        
-        const nameSpan = document.createElement('span');
-        nameSpan.textContent = type.name;
-        
-        const delBtn = document.createElement('button');
-        delBtn.textContent = '×';
-        delBtn.style.padding = '2px 8px';
-        delBtn.style.background = '#e53e3e';
-        delBtn.style.fontSize = '0.8rem';
-        delBtn.onclick = (e) => {
-          e.stopPropagation();
-          deleteMeetingType(type.id);
-        };
-        
-        item.appendChild(nameSpan);
-        item.appendChild(delBtn);
-        
-        item.onclick = () => selectType(type);
-        meetingTypeList.appendChild(item);
-      });
-    }
-
-    function selectType(type) {
-      selectedTypeId = type.id;
-      promptsHeader.textContent = `${type.name} のプロンプト設定`;
-      promptForm.style.display = 'flex';
-      renderMeetingTypes(); // Update highlight
-      renderPrompts(type.id);
-    }
-
-    // プロンプト一覧のレンダリング
-    async function renderPrompts(typeId) {
-      const response = await fetch(`http://localhost:8000/meeting-types/${typeId}/prompts`);
-      const data = await response.json();
-      
-      promptsList.innerHTML = '';
-      data.prompts.forEach(prompt => {
-        const item = document.createElement('div');
-        item.style.background = 'rgba(255,255,255,0.05)';
-        item.style.padding = '10px';
-        item.style.marginBottom = '10px';
-        item.style.borderRadius = '5px';
-        
-        const header = document.createElement('div');
-        header.style.display = 'flex';
-        header.style.justifyContent = 'space-between';
-        header.style.marginBottom = '5px';
-        
-        const trigger = document.createElement('div');
-        trigger.style.fontWeight = 'bold';
-        trigger.style.color = '#fbd38d';
-        trigger.textContent = `条件: ${prompt.trigger_condition}`;
-        
-        const delBtn = document.createElement('button');
-        delBtn.textContent = '削除';
-        delBtn.style.padding = '2px 8px';
-        delBtn.style.background = '#e53e3e';
-        delBtn.style.fontSize = '0.8rem';
-        delBtn.onclick = () => deletePrompt(prompt.id);
-        
-        header.appendChild(trigger);
-        header.appendChild(delBtn);
-        
-        const action = document.createElement('div');
-        action.textContent = `指示: ${prompt.action_prompt}`;
-        action.style.fontSize = '0.9rem';
-        action.style.opacity = '0.8';
-        
-        item.appendChild(header);
-        item.appendChild(action);
-        promptsList.appendChild(item);
-      });
-    }
-
-    // 作成・削除処理
-    document.getElementById('addTypeBtn').addEventListener('click', async () => {
-      const nameInput = document.getElementById('newTypeName');
-      if (!nameInput.value) return;
-      
-      await fetch('http://localhost:8000/meeting-types', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: nameInput.value })
-      });
-      nameInput.value = '';
-      renderMeetingTypes();
-    });
-
-    async function deleteMeetingType(id) {
-      if (!confirm('この種別と関連するプロンプトを全て削除しますか？')) return;
-      await fetch(`http://localhost:8000/meeting-types/${id}`, { method: 'DELETE' });
-      if (selectedTypeId === id) {
-        selectedTypeId = null;
-        promptsList.innerHTML = '';
-        promptForm.style.display = 'none';
-        promptsHeader.textContent = 'プロンプト設定 (選択してください)';
-      }
-      renderMeetingTypes();
-    }
-
-    document.getElementById('addPromptBtn').addEventListener('click', async () => {
-      const trigger = document.getElementById('newTrigger');
-      const action = document.getElementById('newAction');
-      
-      if (!selectedTypeId || !trigger.value || !action.value) return;
-      
-      await fetch('http://localhost:8000/prompts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          meeting_type_id: selectedTypeId,
-          trigger_condition: trigger.value,
-          action_prompt: action.value
-        })
-      });
-      trigger.value = '';
-      action.value = '';
-      renderPrompts(selectedTypeId);
-    });
-
-    async function deletePrompt(id) {
-      if (!confirm('削除しますか？')) return;
-      await fetch(`http://localhost:8000/prompts/${id}`, { method: 'DELETE' });
-      renderPrompts(selectedTypeId);
-    }
-
-    // 会議種別をロード (初期化)
-    async function loadMeetingTypes() {
-      try {
-        const response = await fetch('http://localhost:8000/meeting-types');
-        const data = await response.json();
-        
-        // 既存のオプション（最初の空オプション以外）をクリア
-        meetingTypeSelect.innerHTML = '<option value="">選択してください</option>';
-        
-        data.meeting_types.forEach(type => {
-          const option = document.createElement('option');
-          option.value = type.id;
-          option.textContent = type.name;
-          option.title = type.description;
-          meetingTypeSelect.appendChild(option);
-        });
-        console.log(`✅ Loaded ${data.meeting_types.length} meeting types`);
-      } catch (error) {
-        console.error('Failed to load meeting types:', error);
-        // リトライ（5秒後）
-        setTimeout(loadMeetingTypes, 5000);
-      }
-    }
-    
-    // 初回ロード（バックエンド起動待ちで遅延）
-    setTimeout(loadMeetingTypes, 2000);
-    
-    // WebSocket接続管理
-    let ws = null;
-    let reconnectTimer = null;
-
+    // WebSocket接続
     function connectWebSocket() {
       ws = new WebSocket('ws://localhost:8000/ws');
-
+      
       ws.onopen = () => {
         console.log('✅ WebSocket Connected');
-        if (reconnectTimer) {
-          clearInterval(reconnectTimer);
-          reconnectTimer = null;
-        }
-        // バックエンドが準備完了なので、会議種別をロード
         loadMeetingTypes();
       };
 
@@ -696,247 +555,166 @@
           } else if (message.type === 'advice') {
             addAdvice(message);
           } else if (message.type === 'status') {
-            // サーバーからのステータス同期
             if (message.recording && !isRecording) {
               isRecording = true;
-              updateStatus('active');
-              startBtn.disabled = true;
-              stopBtn.disabled = false;
-              transcribeCheckbox.disabled = true;
+              updateStatus(true);
             } else if (!message.recording && isRecording) {
               isRecording = false;
-              updateStatus('idle');
-              startBtn.disabled = false;
-              stopBtn.disabled = true;
-              transcribeCheckbox.disabled = false;
+              updateStatus(false);
             }
           }
         } catch (e) {
-          console.error('Failed to parse WebSocket message:', e);
+          console.error('WebSocket message parse error:', e);
         }
       };
 
       ws.onclose = () => {
         console.log('❌ WebSocket Disconnected');
-        // 再接続ロジック
-        if (!reconnectTimer) {
-          reconnectTimer = setInterval(() => {
-            console.log('🔄 Reconnecting WebSocket...');
-            connectWebSocket();
-          }, 3000);
-        }
-      };
-
-      ws.onerror = (err) => {
-        console.error('WebSocket Error:', err);
-        ws.close();
+        setTimeout(connectWebSocket, 3000);
       };
     }
 
-    // 初期化時に接続開始
     connectWebSocket();
 
-    // 共通の録音開始処理
-    async function startRecordingCommon(options) {
-      // 画面をクリア
-      transcriptArea.innerHTML = '';
-      adviceArea.innerHTML = '';
-      const p1 = document.createElement('p');
-      p1.style.textAlign = 'center';
-      p1.style.opacity = '0.5';
-      p1.textContent = '文字起こしがここに表示されます';
-      transcriptArea.appendChild(p1);
-      
-      const p2 = document.createElement('p');
-      p2.style.textAlign = 'center';
-      p2.style.opacity = '0.5';
-      p2.textContent = 'ここにアドバイスが表示されます';
-      adviceArea.appendChild(p2);
-      
-      const result = await ipcRenderer.invoke('start-recording', options);
-      return result;
+    // ステータス更新
+    function updateStatus(recording) {
+      if (recording) {
+        statusIndicator.classList.add('active');
+        statusText.textContent = '録音中';
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        transcribeCheckbox.disabled = true;
+        // 記録開始時にコントロールを折りたたむ
+        controlsDetails.open = false;
+      } else {
+        statusIndicator.classList.remove('active');
+        statusText.textContent = '待機中';
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        transcribeCheckbox.disabled = false;
+        // 記録停止時にコントロールを開く
+        controlsDetails.open = true;
+      }
     }
 
+    // 文字起こし追加（チャット風バブル）
+    function addTranscript(source, text) {
+      // 空のステートを削除
+      if (transcriptArea.querySelector('.empty-state')) {
+        transcriptArea.innerHTML = '';
+      }
+
+      const bubble = document.createElement('div');
+      bubble.className = `transcript-bubble ${source}`;
+      
+      const label = document.createElement('div');
+      label.className = `bubble-label ${source}`;
+      label.textContent = source === 'speaker' ? '🔊 Speaker' : '🎤 Mic';
+      
+      const content = document.createElement('div');
+      content.textContent = text;
+      
+      bubble.appendChild(label);
+      bubble.appendChild(content);
+      transcriptArea.appendChild(bubble);
+      transcriptArea.scrollTop = transcriptArea.scrollHeight;
+    }
+
+    // アドバイス追加
+    function addAdvice(data) {
+      if (adviceArea.querySelector('.empty-state')) {
+        adviceArea.innerHTML = '';
+      }
+
+      const item = document.createElement('div');
+      item.className = 'advice-item';
+      
+      const header = document.createElement('div');
+      header.className = 'advice-header';
+      header.innerHTML = `<span>💡 ${data.trigger}</span><span>${new Date().toLocaleTimeString()}</span>`;
+      
+      const content = document.createElement('div');
+      content.textContent = data.text;
+      
+      item.appendChild(header);
+      item.appendChild(content);
+      adviceArea.appendChild(item);
+      adviceArea.scrollTop = adviceArea.scrollHeight;
+    }
+
+    // 会議開始
     startBtn.addEventListener('click', async () => {
       try {
-        // タイトルが未入力の場合、カレンダーから取得を試みる
-        if (!meetingTitle.value) {
-          try {
-            const calResponse = await fetch('http://localhost:8000/calendar/current');
-            const calData = await calResponse.json();
-            if (calData.success && calData.event) {
-              meetingTitle.value = calData.event.summary;
-            }
-          } catch (error) {
-            console.log('Calendar fetch failed (optional):', error);
-          }
-        }
-        
         const options = {
           transcribe_enabled: transcribeCheckbox.checked,
           meeting_type_id: meetingTypeSelect.value ? parseInt(meetingTypeSelect.value) : null,
           title: meetingTitle.value || '無題の会議'
         };
-        
-        const result = await startRecordingCommon(options);
+
+        const result = await ipcRenderer.invoke('start-recording', options);
         if (result.success) {
+          transcriptArea.innerHTML = '';
+          adviceArea.innerHTML = '';
           isRecording = true;
-          updateStatus('active');
-          startBtn.disabled = true;
-          stopBtn.disabled = false;
-          transcribeCheckbox.disabled = true;
-          // タイトルと会議種別は録音中も変更可能にする（disabledにしない）
+          updateStatus(true);
         } else {
-          alert(`録音開始エラー: ${result.message || '不明なエラー'}`);
+          alert(`録音開始エラー: ${result.message}`);
         }
       } catch (error) {
         alert(`録音開始エラー: ${error.message}`);
       }
     });
 
+    // 会議終了
     stopBtn.addEventListener('click', async () => {
       try {
         const result = await ipcRenderer.invoke('stop-recording');
         if (result.success) {
           isRecording = false;
-          updateStatus('idle');
-          startBtn.disabled = false;
-          stopBtn.disabled = true;
-          transcribeCheckbox.disabled = false;
+          updateStatus(false);
         } else {
-          alert(`録音停止エラー: ${result.message || '不明なエラー'}`);
+          alert(`録音停止エラー: ${result.message}`);
         }
       } catch (error) {
         alert(`録音停止エラー: ${error.message}`);
       }
     });
 
-    // 録音中のタイトル・会議種別変更を監視
-    let updateDebounceTimer = null;
-    
-    meetingTitle.addEventListener('input', () => {
-      if (!isRecording) return;
-      
-      clearTimeout(updateDebounceTimer);
-      updateDebounceTimer = setTimeout(async () => {
-        try {
-          await fetch('http://localhost:8000/recording', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: meetingTitle.value })
-          });
-          console.log('✅ Title updated');
-        } catch (error) {
-          console.error('Failed to update title:', error);
-        }
-      }, 1000); // 1秒のデバウンス
-    });
-    
-    meetingTypeSelect.addEventListener('change', async () => {
-      if (!isRecording) return;
-      
+    // 会議種別ロード
+    async function loadMeetingTypes() {
       try {
-        await fetch('http://localhost:8000/recording', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            meeting_type_id: meetingTypeSelect.value ? parseInt(meetingTypeSelect.value) : null 
-          })
+        const response = await fetch('http://localhost:8000/meeting-types');
+        const data = await response.json();
+        
+        meetingTypeSelect.innerHTML = '<option value="">選択してください</option>';
+        data.meeting_types.forEach(type => {
+          const option = document.createElement('option');
+          option.value = type.id;
+          option.textContent = type.name;
+          meetingTypeSelect.appendChild(option);
         });
-        console.log('✅ Meeting type updated');
       } catch (error) {
-        console.error('Failed to update meeting type:', error);
+        console.error('Failed to load meeting types:', error);
+        setTimeout(loadMeetingTypes, 5000);
       }
+    }
+
+    // モーダル制御（簡易版）
+    document.getElementById('historyBtn').addEventListener('click', () => {
+      document.getElementById('historyModal').style.display = 'flex';
     });
 
-    function updateStatus(status) {
-      statusBadge.className = 'status-badge';
-      
-      switch (status) {
-        case 'idle':
-          statusBadge.classList.add('status-idle');
-          statusBadge.textContent = '待機中 (Idle)';
-          statusText.textContent = '会議を待機しています...';
-          break;
-        case 'standby':
-          statusBadge.classList.add('status-standby');
-          statusBadge.textContent = '準備中 (Standby)';
-          statusText.textContent = '会議が検知されました。開始しますか？';
-          break;
-        case 'active':
-          statusBadge.classList.add('status-active');
-          statusBadge.textContent = '録音中 (Active)';
-          statusText.textContent = '会議を録音・文字起こし中...';
-          break;
-      }
-    }
+    document.getElementById('closeHistoryBtn').addEventListener('click', () => {
+      document.getElementById('historyModal').style.display = 'none';
+    });
 
-    function addTranscript(source, text) {
-      const item = document.createElement('div');
-      item.className = 'transcript-item';
-      
-      const label = document.createElement('div');
-      label.className = source === 'speaker' ? 'transcript-speaker' : 'transcript-mic';
-      label.textContent = source === 'speaker' ? '🔊 Speaker' : '🎤 Microphone';
-      
-      const content = document.createElement('div');
-      content.textContent = text;
-      
-      item.appendChild(label);
-      item.appendChild(content);
-      
-      // 最初の説明テキストをクリア
-      if (transcriptArea.children.length === 1 && 
-          transcriptArea.children[0].tagName === 'P') {
-        transcriptArea.innerHTML = '';
-      }
-      
-      transcriptArea.appendChild(item);
-      transcriptArea.scrollTop = transcriptArea.scrollHeight;
-    }
+    document.getElementById('settingsBtn').addEventListener('click', () => {
+      document.getElementById('settingsModal').style.display = 'flex';
+    });
 
-    function addAdvice(data) {
-      const item = document.createElement('div');
-      item.style.background = 'rgba(255, 255, 255, 0.1)';
-      item.style.padding = '15px';
-      item.style.marginBottom = '15px';
-      item.style.borderRadius = '10px';
-      item.style.borderLeft = '4px solid #48bb78';
-      item.style.animation = 'fadeIn 0.5s ease';
-      
-      const header = document.createElement('div');
-      header.style.display = 'flex';
-      header.style.justifyContent = 'space-between';
-      header.style.marginBottom = '8px';
-      header.style.fontSize = '0.8rem';
-      header.style.opacity = '0.7';
-      
-      const trigger = document.createElement('span');
-      trigger.textContent = `💡 ${data.trigger}`;
-      
-      const time = document.createElement('span');
-      time.textContent = new Date().toLocaleTimeString();
-      
-      header.appendChild(trigger);
-      header.appendChild(time);
-      
-      const content = document.createElement('div');
-      content.style.lineHeight = '1.5';
-      content.style.whiteSpace = 'pre-wrap';
-      content.textContent = data.text;
-      
-      item.appendChild(header);
-      item.appendChild(content);
-      
-      // 最初の説明テキストをクリア
-      if (adviceArea.children.length === 1 && 
-          adviceArea.children[0].tagName === 'P') {
-        adviceArea.innerHTML = '';
-      }
-      
-      adviceArea.appendChild(item);
-      adviceArea.scrollTop = adviceArea.scrollHeight;
-    }
+    document.getElementById('closeSettingsBtn').addEventListener('click', () => {
+      document.getElementById('settingsModal').style.display = 'none';
+    });
   </script>
 </body>
 </html>

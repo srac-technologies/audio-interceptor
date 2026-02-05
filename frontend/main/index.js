@@ -49,6 +49,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    frame: false, // ツールバー非表示
+    transparent: true, // 背景透過有効
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
@@ -58,8 +60,10 @@ function createWindow() {
   // 開発中は簡易HTMLをロード
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
-  // DevTools を開く
-  mainWindow.webContents.openDevTools();
+  // DevTools は開発時のみ（環境変数で制御）
+  if (process.env.NODE_ENV === 'development') {
+    // mainWindow.webContents.openDevTools();
+  }
 
   // ウィンドウを閉じたときの処理（最小化してトレイへ）
   mainWindow.on('close', (event) => {
