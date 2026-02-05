@@ -9,6 +9,8 @@
     "dev": "electron .",
     "build": "electron-builder",
     "build:linux": "electron-builder --linux",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
     "build:all": "electron-builder -mwl"
   },
   "keywords": [
@@ -51,6 +53,19 @@
         "deb"
       ],
       "category": "Office"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
     },
     "directories": {
       "output": "dist",
