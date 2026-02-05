@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, Notification } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const activeWin = require('active-win');
@@ -115,6 +115,28 @@ function notifyMeetingDetected(appName, windowTitle) {
   lastDetectedApp = appName;
   console.log(`Meeting detected: ${appName}`);
   
+  // システム通知を表示
+  if (Notification.isSupported()) {
+    const notification = new Notification({
+      title: '🎯 会議が検出されました',
+      body: `${appName} の会議が開始されました。録音を開始しますか？`,
+      icon: path.join(__dirname, '../renderer/icon.png'), // アイコンがあれば
+      urgency: 'normal',
+      timeoutType: 'default'
+    });
+    
+    notification.on('click', () => {
+      // 通知をクリックしたらウィンドウをフォーカス
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+      }
+    });
+    
+    notification.show();
+  }
+  
+  // Electron UI内の通知バナーも表示
   if (mainWindow) {
     mainWindow.webContents.send('meeting-detected', {
       app: appName,
