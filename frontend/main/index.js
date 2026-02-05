@@ -83,6 +83,7 @@ ipcMain.handle('start-recording', async (event, options) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         transcribe_mode: options?.transcribe || false,
+        meeting_type_id: options?.meeting_type_id || null,
         tmp_dir: './tmp'
       })
     });

@@ -143,6 +143,13 @@
       </div>
       
       <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.2);">
+        <label style="display: block; margin-bottom: 10px; font-weight: bold;">会議種別（AIアドバイス用）</label>
+        <select id="meetingTypeSelect" style="width: 100%; padding: 10px; border-radius: 5px; border: none; background: rgba(255,255,255,0.2); color: white; font-size: 1rem;">
+          <option value="">選択してください（アドバイスなし）</option>
+        </select>
+      </div>
+
+      <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.2);">
         <label style="display: flex; align-items: center; cursor: pointer;">
           <input type="checkbox" id="transcribeCheckbox" style="margin-right: 10px; width: 20px; height: 20px;">
           <span>文字起こしを有効にする（Whisper API）</span>
@@ -170,6 +177,27 @@
     const stopBtn = document.getElementById('stopBtn');
     const transcriptArea = document.getElementById('transcriptArea');
     const transcribeCheckbox = document.getElementById('transcribeCheckbox');
+    const meetingTypeSelect = document.getElementById('meetingTypeSelect');
+    
+    // 会議種別をロード
+    async function loadMeetingTypes() {
+      try {
+        const response = await fetch('http://localhost:8000/meeting-types');
+        const data = await response.json();
+        
+        data.meeting_types.forEach(type => {
+          const option = document.createElement('option');
+          option.value = type.id;
+          option.textContent = type.name;
+          option.title = type.description;
+          meetingTypeSelect.appendChild(option);
+        });
+      } catch (error) {
+        console.error('Failed to load meeting types:', error);
+      }
+    }
+    
+    loadMeetingTypes();
     
     // WebSocket接続管理
     let ws = null;
@@ -236,7 +264,8 @@
     startBtn.addEventListener('click', async () => {
       try {
         const options = {
-          transcribe: transcribeCheckbox.checked
+          transcribe: transcribeCheckbox.checked,
+          meeting_type_id: meetingTypeSelect.value ? parseInt(meetingTypeSelect.value) : null
         };
         
         const result = await ipcRenderer.invoke('start-recording', options);
@@ -246,6 +275,7 @@
           startBtn.disabled = true;
           stopBtn.disabled = false;
           transcribeCheckbox.disabled = true;
+          meetingTypeSelect.disabled = true;
         } else {
           alert(`録音開始エラー: ${result.message || '不明なエラー'}`);
         }
@@ -263,6 +293,7 @@
           startBtn.disabled = false;
           stopBtn.disabled = true;
           transcribeCheckbox.disabled = false;
+          meetingTypeSelect.disabled = false;
         } else {
           alert(`録音停止エラー: ${result.message || '不明なエラー'}`);
         }
