@@ -44,6 +44,7 @@ class AppState:
         self.llm_pipeline: Optional[LLMPipeline] = None
         self.loop = None
         self.active_meeting_type_id: Optional[int] = None
+        self.current_session_id: Optional[int] = None
 
 state = AppState()
 
@@ -133,6 +134,13 @@ async def get_available_sinks():
 def on_transcript_callback(source, text):
     """AudioInterceptorからのコールバック（別スレッドで呼ばれる）"""
     if state.loop and state.loop.is_running():
+        # DB保存 (メインスレッドで実行する必要はないが、簡単のため)
+        if state.current_session_id:
+            try:
+                database.add_transcript(state.current_session_id, source, text)
+            except Exception as e:
+                print(f"Failed to save transcript: {e}")
+
         # 文字起こし配信
         asyncio.run_coroutine_threadsafe(broadcast_transcript(source, text), state.loop)
         
@@ -142,6 +150,17 @@ def on_transcript_callback(source, text):
 
 async def on_advice_callback(advice_data):
     """LLMパイプラインからのアドバイスコールバック"""
+    # DB保存
+    if state.current_session_id:
+        try:
+            database.add_advice(
+                state.current_session_id, 
+                advice_data.get("trigger", ""), 
+                advice_data.get("text", "")
+            )
+        except Exception as e:
+            print(f"Failed to save advice: {e}")
+
     await broadcast_advice(advice_data)
 
 @app.post("/recording/start")
@@ -155,6 +174,13 @@ async def start_recording(request: RecordingStartRequest):
         state.active_meeting_type_id = request.meeting_type_id
         if state.active_meeting_type_id:
             print(f"📋 Meeting Type ID: {state.active_meeting_type_id}")
+            
+        # 新しいセッションを作成
+        state.current_session_id = database.create_session(
+            state.active_meeting_type_id, 
+            title=f"Meeting {state.active_meeting_type_id}" # TODO: より良いタイトル生成
+        )
+        print(f"🆕 Session started: ID {state.current_session_id}")
             
         # LLMパイプライン初期化
         if request.transcribe_mode and state.active_meeting_type_id:
@@ -189,6 +215,7 @@ async def start_recording(request: RecordingStartRequest):
         return {
             "success": True,
             "message": "Recording started",
+            "session_id": state.current_session_id,
             "config": {
                 "tmp_dir": request.tmp_dir,
                 "target_sink": request.target_sink or "default",
@@ -199,6 +226,7 @@ async def start_recording(request: RecordingStartRequest):
     except Exception as e:
         state.recording = False
         state.interceptor = None
+        state.current_session_id = None
         print(f"❌ Failed to start recording: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -212,6 +240,12 @@ async def stop_recording():
         if state.interceptor:
             state.interceptor.cleanup()
             state.interceptor = None
+        
+        # セッション終了処理
+        if state.current_session_id:
+            database.end_session(state.current_session_id)
+            print(f"🏁 Session ended: ID {state.current_session_id}")
+            state.current_session_id = None
         
         state.recording = False
         print("⏹️  Recording stopped")
@@ -345,6 +379,18 @@ async def delete_prompt(prompt_id: int):
     """プロンプトを削除"""
     database.delete_prompt(prompt_id)
     return {"success": True}
+
+# --- History APIs ---
+
+@app.get("/history")
+async def list_history():
+    """会議履歴一覧を取得"""
+    return {"sessions": database.get_sessions()}
+
+@app.get("/history/{session_id}")
+async def get_history_details(session_id: int):
+    """会議の詳細（ログ・アドバイス）を取得"""
+    return database.get_session_details(session_id)
 
 if __name__ == "__main__":
     print("🚀 Starting Meeting Assistant Backend Server...")

@@ -34,6 +34,42 @@ def init_db():
         FOREIGN KEY (meeting_type_id) REFERENCES meeting_types (id)
     )
     ''')
+
+    # Sessions テーブル (履歴用)
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        meeting_type_id INTEGER,
+        start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        end_time TIMESTAMP,
+        title TEXT,
+        FOREIGN KEY (meeting_type_id) REFERENCES meeting_types (id)
+    )
+    ''')
+
+    # Transcripts テーブル (文字起こしログ)
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS transcripts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id INTEGER NOT NULL,
+        source TEXT NOT NULL,
+        text TEXT NOT NULL,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (session_id) REFERENCES sessions (id)
+    )
+    ''')
+
+    # Advices テーブル (アドバイスログ)
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS advices (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id INTEGER NOT NULL,
+        trigger_condition TEXT,
+        advice_text TEXT NOT NULL,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (session_id) REFERENCES sessions (id)
+    )
+    ''')
     
     # 初期データ投入（データがない場合のみ）
     cursor.execute('SELECT count(*) FROM meeting_types')
@@ -150,6 +186,91 @@ def delete_prompt(prompt_id: int):
     cursor.execute('DELETE FROM prompts WHERE id = ?', (prompt_id,))
     conn.commit()
     conn.close()
+
+# --- History Operations ---
+
+def create_session(meeting_type_id: Optional[int], title: str = "") -> int:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT INTO sessions (meeting_type_id, title) VALUES (?, ?)',
+        (meeting_type_id, title)
+    )
+    new_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return new_id
+
+def end_session(session_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        'UPDATE sessions SET end_time = CURRENT_TIMESTAMP WHERE id = ?',
+        (session_id,)
+    )
+    conn.commit()
+    conn.close()
+
+def add_transcript(session_id: int, source: str, text: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT INTO transcripts (session_id, source, text) VALUES (?, ?, ?)',
+        (session_id, source, text)
+    )
+    conn.commit()
+    conn.close()
+
+def add_advice(session_id: int, trigger: str, text: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT INTO advices (session_id, trigger_condition, advice_text) VALUES (?, ?, ?)',
+        (session_id, trigger, text)
+    )
+    conn.commit()
+    conn.close()
+
+def get_sessions() -> List[Dict[str, Any]]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT s.*, m.name as meeting_type_name 
+        FROM sessions s
+        LEFT JOIN meeting_types m ON s.meeting_type_id = m.id
+        ORDER BY s.start_time DESC
+    ''')
+    sessions = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return sessions
+
+def get_session_details(session_id: int) -> Dict[str, Any]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # セッション情報
+    cursor.execute('''
+        SELECT s.*, m.name as meeting_type_name 
+        FROM sessions s
+        LEFT JOIN meeting_types m ON s.meeting_type_id = m.id
+        WHERE s.id = ?
+    ''', (session_id,))
+    session = dict(cursor.fetchone())
+    
+    # ログ（時系列順）
+    cursor.execute('SELECT * FROM transcripts WHERE session_id = ? ORDER BY timestamp', (session_id,))
+    transcripts = [dict(row) for row in cursor.fetchall()]
+    
+    # アドバイス
+    cursor.execute('SELECT * FROM advices WHERE session_id = ? ORDER BY timestamp', (session_id,))
+    advices = [dict(row) for row in cursor.fetchall()]
+    
+    conn.close()
+    return {
+        "session": session,
+        "transcripts": transcripts,
+        "advices": advices
+    }
 
 if __name__ == "__main__":
     init_db()

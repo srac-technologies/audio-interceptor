@@ -132,7 +132,10 @@
   <div class="container">
     <h1>🎙️ Meeting Assistant</h1>
     
-    <div style="position: absolute; top: 20px; right: 20px;">
+    <div style="position: absolute; top: 20px; right: 20px; display: flex; gap: 10px;">
+      <button id="historyBtn" style="background: rgba(255,255,255,0.2); padding: 8px 15px; font-size: 0.9rem;">
+        📜 履歴
+      </button>
       <button id="settingsBtn" style="background: rgba(255,255,255,0.2); padding: 8px 15px; font-size: 0.9rem;">
         ⚙️ 設定
       </button>
@@ -223,6 +226,34 @@
     </div>
   </div>
 
+  <!-- History Modal -->
+  <div id="historyModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background: #2d3748; width: 90%; max-width: 1000px; height: 90%; border-radius: 10px; padding: 20px; display: flex; flex-direction: column; color: white;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">
+        <h2>会議履歴</h2>
+        <button id="closeHistoryBtn" style="background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer;">&times;</button>
+      </div>
+      
+      <div style="display: flex; flex: 1; gap: 20px; overflow: hidden;">
+        <!-- Left Pane: Session List -->
+        <div style="flex: 1; display: flex; flex-direction: column; border-right: 1px solid rgba(255,255,255,0.1); padding-right: 20px;">
+          <h3>過去の会議</h3>
+          <div id="sessionList" style="flex: 1; overflow-y: auto; margin: 10px 0; background: rgba(0,0,0,0.2); border-radius: 5px; padding: 10px;">
+            <!-- Session items -->
+          </div>
+        </div>
+        
+        <!-- Right Pane: Details -->
+        <div style="flex: 2; display: flex; flex-direction: column;">
+          <h3 id="historyDetailHeader">詳細</h3>
+          <div id="historyDetailContent" style="flex: 1; overflow-y: auto; margin: 10px 0; background: rgba(0,0,0,0.2); border-radius: 5px; padding: 20px;">
+            <p style="text-align: center; opacity: 0.5;">左側から会議を選択してください</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     const { ipcRenderer } = require('electron');
 
@@ -237,6 +268,118 @@
     const transcribeCheckbox = document.getElementById('transcribeCheckbox');
     const meetingTypeSelect = document.getElementById('meetingTypeSelect');
     
+    // --- History UI Logic ---
+    const historyBtn = document.getElementById('historyBtn');
+    const historyModal = document.getElementById('historyModal');
+    const closeHistoryBtn = document.getElementById('closeHistoryBtn');
+    const sessionList = document.getElementById('sessionList');
+    const historyDetailContent = document.getElementById('historyDetailContent');
+    const historyDetailHeader = document.getElementById('historyDetailHeader');
+
+    historyBtn.addEventListener('click', () => {
+      historyModal.style.display = 'flex';
+      renderHistoryList();
+    });
+
+    closeHistoryBtn.addEventListener('click', () => {
+      historyModal.style.display = 'none';
+    });
+
+    async function renderHistoryList() {
+      const response = await fetch('http://localhost:8000/history');
+      const data = await response.json();
+      
+      sessionList.innerHTML = '';
+      data.sessions.forEach(session => {
+        const item = document.createElement('div');
+        item.style.padding = '10px';
+        item.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+        item.style.cursor = 'pointer';
+        
+        const title = document.createElement('div');
+        title.style.fontWeight = 'bold';
+        title.textContent = session.title || '無題の会議';
+        
+        const date = document.createElement('div');
+        date.style.fontSize = '0.8rem';
+        date.style.opacity = '0.7';
+        date.textContent = new Date(session.start_time).toLocaleString();
+        
+        const type = document.createElement('div');
+        type.style.fontSize = '0.8rem';
+        type.style.color = '#90cdf4';
+        type.textContent = session.meeting_type_name || '種別なし';
+        
+        item.appendChild(title);
+        item.appendChild(date);
+        item.appendChild(type);
+        
+        item.onclick = () => renderHistoryDetail(session.id);
+        sessionList.appendChild(item);
+      });
+    }
+
+    async function renderHistoryDetail(sessionId) {
+      const response = await fetch(`http://localhost:8000/history/${sessionId}`);
+      const data = await response.json();
+      
+      historyDetailHeader.textContent = `${data.session.title} の詳細`;
+      historyDetailContent.innerHTML = '';
+      
+      // 文字起こしとアドバイスを時系列でマージして表示
+      const allEvents = [
+        ...data.transcripts.map(t => ({...t, type: 'transcript'})),
+        ...data.advices.map(a => ({...a, type: 'advice'}))
+      ].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      
+      allEvents.forEach(event => {
+        const item = document.createElement('div');
+        item.style.marginBottom = '15px';
+        item.style.padding = '10px';
+        item.style.borderRadius = '5px';
+        
+        const time = document.createElement('div');
+        time.style.fontSize = '0.7rem';
+        time.style.opacity = '0.5';
+        time.style.marginBottom = '5px';
+        time.textContent = new Date(event.timestamp).toLocaleTimeString();
+        
+        item.appendChild(time);
+        
+        if (event.type === 'transcript') {
+          item.style.background = 'rgba(255,255,255,0.05)';
+          const label = document.createElement('div');
+          label.style.fontWeight = 'bold';
+          label.style.marginBottom = '5px';
+          label.textContent = event.source === 'speaker' ? '🔊 Speaker' : '🎤 Microphone';
+          label.style.color = event.source === 'speaker' ? '#ffd700' : '#87ceeb';
+          
+          const text = document.createElement('div');
+          text.textContent = event.text;
+          
+          item.appendChild(label);
+          item.appendChild(text);
+        } else {
+          item.style.background = 'rgba(72, 187, 120, 0.1)';
+          item.style.borderLeft = '3px solid #48bb78';
+          
+          const label = document.createElement('div');
+          label.style.fontWeight = 'bold';
+          label.style.color = '#48bb78';
+          label.style.marginBottom = '5px';
+          label.textContent = `💡 AI Advice (${event.trigger_condition})`;
+          
+          const text = document.createElement('div');
+          text.textContent = event.advice_text;
+          
+          item.appendChild(label);
+          item.appendChild(text);
+        }
+        
+        historyDetailContent.appendChild(item);
+      });
+    }
+
     // --- Settings UI Logic ---
     const settingsBtn = document.getElementById('settingsBtn');
     const settingsModal = document.getElementById('settingsModal');
@@ -487,6 +630,21 @@
 
     startBtn.addEventListener('click', async () => {
       try {
+        // 画面をクリア
+        transcriptArea.innerHTML = '';
+        adviceArea.innerHTML = '';
+        const p1 = document.createElement('p');
+        p1.style.textAlign = 'center';
+        p1.style.opacity = '0.5';
+        p1.textContent = '文字起こしがここに表示されます';
+        transcriptArea.appendChild(p1);
+        
+        const p2 = document.createElement('p');
+        p2.style.textAlign = 'center';
+        p2.style.opacity = '0.5';
+        p2.textContent = 'ここにアドバイスが表示されます';
+        adviceArea.appendChild(p2);
+
         const options = {
           transcribe: transcribeCheckbox.checked,
           meeting_type_id: meetingTypeSelect.value ? parseInt(meetingTypeSelect.value) : null

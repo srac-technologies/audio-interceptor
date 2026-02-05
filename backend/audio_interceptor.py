@@ -335,7 +335,8 @@ class AudioInterceptor:
                     'ご清聴ありがとうございました',
                     'Thanks for watching',
                     'Subscribe',
-                    'Like and subscribe'
+                    'Like and subscribe',
+                    '無音の場合は空文字を返してください'  # プロンプト自体の漏れ対策
                 ]
                 
                 # 定型文が含まれていて、かつ短い場合はスキップ
