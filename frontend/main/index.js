@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, Notification, Tray, Menu } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const activeWin = require('active-win');
@@ -7,6 +7,7 @@ let mainWindow = null;
 let pythonProcess = null;
 let detectionInterval = null;
 let lastDetectedApp = null;
+let tray = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -24,8 +25,85 @@ function createWindow() {
   // DevTools を開く
   mainWindow.webContents.openDevTools();
 
+  // ウィンドウを閉じたときの処理（最小化してトレイへ）
+  mainWindow.on('close', (event) => {
+    if (!app.isQuitting) {
+      event.preventDefault();
+      mainWindow.hide();
+      
+      // 初回のみ通知を表示
+      if (!tray.hasShownHideNotification) {
+        const notification = new Notification({
+          title: 'Meeting Assistant',
+          body: 'バックグラウンドで実行中です。トレイアイコンから操作できます。'
+        });
+        notification.show();
+        tray.hasShownHideNotification = true;
+      }
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+}
+
+function createTray() {
+  // トレイアイコンを作成（アイコンがない場合は空文字列でもOK）
+  // 本番では適切なアイコンファイルを使用
+  const iconPath = path.join(__dirname, '../renderer/tray-icon.png');
+  
+  // アイコンが存在しない場合はデフォルトを使用
+  try {
+    tray = new Tray(iconPath);
+  } catch (error) {
+    // フォールバック: nativeImageで小さいアイコンを生成
+    const { nativeImage } = require('electron');
+    const icon = nativeImage.createEmpty();
+    tray = new Tray(icon);
+  }
+  
+  tray.setToolTip('Meeting Assistant');
+  tray.hasShownHideNotification = false;
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: '表示',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      }
+    },
+    {
+      label: '録音中...',
+      id: 'recording-status',
+      enabled: false,
+      visible: false
+    },
+    { type: 'separator' },
+    {
+      label: '終了',
+      click: () => {
+        app.isQuitting = true;
+        app.quit();
+      }
+    }
+  ]);
+
+  tray.setContextMenu(contextMenu);
+
+  // トレイアイコンをクリックしたらウィンドウを表示
+  tray.on('click', () => {
+    if (mainWindow) {
+      if (mainWindow.isVisible()) {
+        mainWindow.hide();
+      } else {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    }
   });
 }
 
@@ -170,6 +248,7 @@ function stopMeetingDetection() {
 }
 
 app.whenReady().then(() => {
+  createTray();
   createWindow();
   startPythonBackend();
   startMeetingDetection(); // 会議検知を開始
@@ -177,19 +256,24 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
+    } else if (mainWindow) {
+      mainWindow.show();
     }
   });
 });
 
 app.on('window-all-closed', () => {
-  stopMeetingDetection();
-  stopPythonBackend();
-  if (process.platform !== 'darwin') {
+  // macOS以外でもウィンドウが全て閉じてもアプリは終了しない（トレイに常駐）
+  // 明示的に終了ボタンを押したときのみ終了
+  if (app.isQuitting) {
+    stopMeetingDetection();
+    stopPythonBackend();
     app.quit();
   }
 });
 
 app.on('before-quit', () => {
+  app.isQuitting = true;
   stopMeetingDetection();
   stopPythonBackend();
 });
