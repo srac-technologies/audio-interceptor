@@ -30,6 +30,8 @@ except ImportError:
 
 # AudioInterceptorをインポート
 from audio_interceptor import AudioInterceptor
+# Databaseをインポート
+import database
 
 # グローバル状態
 class AppState:
@@ -38,12 +40,16 @@ class AppState:
         self.websocket_clients = set()
         self.interceptor: Optional[AudioInterceptor] = None
         self.loop = None
+        self.active_meeting_type_id: Optional[int] = None
 
 state = AppState()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 起動時
+    print("🚀 Initializing database...")
+    database.init_db()
+    
     state.loop = asyncio.get_running_loop()
     print("✅ Event loop captured")
     yield
@@ -67,6 +73,7 @@ class RecordingStartRequest(BaseModel):
     target_sink: Optional[str] = None
     transcribe_mode: bool = False
     tmp_dir: str = "./tmp"
+    meeting_type_id: Optional[int] = None
 
 @app.get("/")
 async def root():
@@ -123,6 +130,11 @@ async def start_recording(request: RecordingStartRequest):
         return {"success": False, "message": "Already recording"}
     
     try:
+        # 会議種別を設定
+        state.active_meeting_type_id = request.meeting_type_id
+        if state.active_meeting_type_id:
+            print(f"📋 Meeting Type ID: {state.active_meeting_type_id}")
+            
         # AudioInterceptorインスタンスを作成
         state.interceptor = AudioInterceptor(
             tmp_dir=request.tmp_dir,
@@ -249,6 +261,18 @@ async def broadcast_status(status: str):
             disconnected.add(client)
     
     state.websocket_clients -= disconnected
+
+# --- Master Data APIs ---
+
+@app.get("/meeting-types")
+async def list_meeting_types():
+    """会議種別一覧を取得"""
+    return {"meeting_types": database.get_meeting_types()}
+
+@app.get("/meeting-types/{type_id}/prompts")
+async def list_prompts(type_id: int):
+    """指定された会議種別のプロンプト一覧を取得"""
+    return {"prompts": database.get_prompts_for_type(type_id)}
 
 if __name__ == "__main__":
     print("🚀 Starting Meeting Assistant Backend Server...")
