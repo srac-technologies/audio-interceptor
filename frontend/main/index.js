@@ -101,10 +101,17 @@ async function detectMeeting() {
     }
 
   } catch (error) {
-    // エラーは静かに無視（権限エラーなど）
-    if (error.message && !error.message.includes('permission')) {
+    // エラーは静かに無視（JSON parse エラー、権限エラーなど）
+    // active-win の Linux での既知の問題: 空のJSONや不正なJSONが返されることがある
+    const errorMsg = error.message || '';
+    const isKnownError = errorMsg.includes('permission') || 
+                         errorMsg.includes('JSON') || 
+                         errorMsg.includes('Unexpected');
+    
+    if (!isKnownError) {
       console.error('Detection error:', error);
     }
+    // 既知のエラーは無視して処理を継続
   }
 }
 
