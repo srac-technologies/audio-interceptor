@@ -34,6 +34,8 @@ from audio_interceptor import AudioInterceptor
 import database
 # LLMPipelineをインポート
 from llm_pipeline import LLMPipeline
+# CalendarServiceをインポート
+from calendar_service import calendar_service
 
 # グローバル状態
 class AppState:
@@ -432,6 +434,23 @@ async def list_history():
 async def get_history_details(session_id: int):
     """会議の詳細（ログ・アドバイス）を取得"""
     return database.get_session_details(session_id)
+
+# --- Calendar APIs ---
+
+@app.get("/calendar/current")
+async def get_current_calendar_event():
+    """現在時刻付近のカレンダーイベントを取得"""
+    event = calendar_service.get_current_event()
+    if event:
+        return {"success": True, "event": event}
+    else:
+        return {"success": False, "message": "No event found"}
+
+@app.get("/calendar/today")
+async def get_today_events():
+    """今日のカレンダーイベント一覧を取得"""
+    events = calendar_service.get_events_today()
+    return {"events": events}
 
 if __name__ == "__main__":
     print("🚀 Starting Meeting Assistant Backend Server...")

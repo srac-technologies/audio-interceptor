@@ -303,9 +303,23 @@
       
       transcribeCheckbox.checked = true;
       
-      // タイトルが未入力の場合、検知されたアプリ名をデフォルトに
-      if (!meetingTitle.value && detectedMeetingInfo) {
-        meetingTitle.value = `${detectedMeetingInfo.app} ミーティング`;
+      // タイトルが未入力の場合、カレンダーから取得を試みる
+      if (!meetingTitle.value) {
+        try {
+          const calResponse = await fetch('http://localhost:8000/calendar/current');
+          const calData = await calResponse.json();
+          if (calData.success && calData.event) {
+            meetingTitle.value = calData.event.summary;
+          } else if (detectedMeetingInfo) {
+            // カレンダーにイベントがない場合、検知されたアプリ名
+            meetingTitle.value = `${detectedMeetingInfo.app} ミーティング`;
+          }
+        } catch (error) {
+          // カレンダー取得失敗時は検知されたアプリ名
+          if (detectedMeetingInfo) {
+            meetingTitle.value = `${detectedMeetingInfo.app} ミーティング`;
+          }
+        }
       }
       
       const options = {
@@ -744,6 +758,19 @@
 
     startBtn.addEventListener('click', async () => {
       try {
+        // タイトルが未入力の場合、カレンダーから取得を試みる
+        if (!meetingTitle.value) {
+          try {
+            const calResponse = await fetch('http://localhost:8000/calendar/current');
+            const calData = await calResponse.json();
+            if (calData.success && calData.event) {
+              meetingTitle.value = calData.event.summary;
+            }
+          } catch (error) {
+            console.log('Calendar fetch failed (optional):', error);
+          }
+        }
+        
         const options = {
           transcribe: transcribeCheckbox.checked,
           meeting_type_id: meetingTypeSelect.value ? parseInt(meetingTypeSelect.value) : null,
