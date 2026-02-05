@@ -65,22 +65,31 @@ async function detectMeeting() {
     const title = (window.title || '').toLowerCase();
     const owner = (window.owner?.name || '').toLowerCase();
 
+    // デバッグ用（開発時）
+    // console.log(`Active window: ${window.title} | Owner: ${owner}`);
+
     // 検知パターン
     const meetingPatterns = [
-      { name: 'Zoom', keywords: ['zoom'], ownerKeywords: ['zoom'], titleKeywords: ['zoom meeting'] },
-      { name: 'Google Meet', keywords: ['meet.google.com'], ownerKeywords: ['chrome', 'edge', 'brave'], titleKeywords: ['meet.google.com'] },
-      { name: 'Microsoft Teams', keywords: ['teams'], ownerKeywords: ['teams'], titleKeywords: ['microsoft teams', 'teams meeting'] }
+      { 
+        name: 'Zoom', 
+        check: (t, o) => o.includes('zoom') || t.includes('zoom meeting')
+      },
+      { 
+        name: 'Google Meet', 
+        check: (t, o) => {
+          const isBrowser = ['chrome', 'edge', 'brave', 'firefox', 'chromium'].some(b => o.includes(b));
+          const isMeet = t.includes('meet') && (t.includes('google meet') || t.includes('meet.google.com') || /meet\s*-\s*[a-z]{3}-[a-z]{4}-[a-z]{3}/.test(t));
+          return isBrowser && isMeet;
+        }
+      },
+      { 
+        name: 'Microsoft Teams', 
+        check: (t, o) => o.includes('teams') || t.includes('microsoft teams') || t.includes('teams meeting')
+      }
     ];
 
     for (const pattern of meetingPatterns) {
-      const ownerMatch = pattern.ownerKeywords.some(k => owner.includes(k));
-      const titleMatch = pattern.titleKeywords.some(k => title.includes(k));
-      
-      // Google Meetの場合はtitleにURL必須、他はownerまたはtitleのマッチでOK
-      if (pattern.name === 'Google Meet' && titleMatch && ownerMatch) {
-        notifyMeetingDetected(pattern.name, window.title);
-        return;
-      } else if (pattern.name !== 'Google Meet' && (ownerMatch || titleMatch)) {
+      if (pattern.check(title, owner)) {
         notifyMeetingDetected(pattern.name, window.title);
         return;
       }
