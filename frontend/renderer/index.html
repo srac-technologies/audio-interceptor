@@ -82,6 +82,25 @@
       font-size: 0.9rem;
     }
 
+    .btn-stop-floating {
+      margin-left: auto;
+      background: #ff4757;
+      color: #fff;
+      border: none;
+      padding: 8px 20px;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.2s;
+    }
+
+    .btn-stop-floating:hover {
+      background: #ee3344;
+      transform: translateY(-1px);
+    }
+
     .status-indicator {
       width: 10px;
       height: 10px;
@@ -427,6 +446,7 @@
     <div class="status-bar">
       <div class="status-indicator" id="statusIndicator"></div>
       <span id="statusText">待機中</span>
+      <button class="btn-stop-floating" id="stopBtnFloating" style="display: none;">⏹ 会議を終了</button>
     </div>
 
     <!-- コントロールパネル（折りたたみ可能） -->
@@ -536,6 +556,7 @@
     const meetingTypeSelect = document.getElementById('meetingTypeSelect');
     const meetingTitle = document.getElementById('meetingTitle');
     const controlsDetails = document.getElementById('controlsDetails');
+    const stopBtnFloating = document.getElementById('stopBtnFloating');
 
     // WebSocket接続
     function connectWebSocket() {
@@ -586,6 +607,8 @@
         transcribeCheckbox.disabled = true;
         // 記録開始時にコントロールを折りたたむ
         controlsDetails.open = false;
+        // フローティング停止ボタンを表示
+        stopBtnFloating.style.display = 'block';
       } else {
         statusIndicator.classList.remove('active');
         statusText.textContent = '待機中';
@@ -594,6 +617,8 @@
         transcribeCheckbox.disabled = false;
         // 記録停止時にコントロールを開く
         controlsDetails.open = true;
+        // フローティング停止ボタンを非表示
+        stopBtnFloating.style.display = 'none';
       }
     }
 
@@ -666,7 +691,8 @@
     });
 
     // 会議終了
-    stopBtn.addEventListener('click', async () => {
+    // 停止ボタン（共通処理）
+    async function handleStopRecording() {
       try {
         const result = await ipcRenderer.invoke('stop-recording');
         if (result.success) {
@@ -678,7 +704,10 @@
       } catch (error) {
         alert(`録音停止エラー: ${error.message}`);
       }
-    });
+    }
+
+    stopBtn.addEventListener('click', handleStopRecording);
+    stopBtnFloating.addEventListener('click', handleStopRecording);
 
     // 会議種別ロード
     async function loadMeetingTypes() {
