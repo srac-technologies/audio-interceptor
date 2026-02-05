@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meeting Assistant</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 30px;
+      font-size: 2.5rem;
+    }
+
+    .status-card {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 15px;
+      padding: 30px;
+      margin-bottom: 20px;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-weight: bold;
+      margin-bottom: 15px;
+    }
+
+    .status-idle {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .status-standby {
+      background: rgba(255, 193, 7, 0.8);
+      color: #000;
+    }
+
+    .status-active {
+      background: rgba(76, 175, 80, 0.8);
+      color: #fff;
+    }
+
+    .controls {
+      display: flex;
+      gap: 15px;
+      margin-top: 20px;
+    }
+
+    button {
+      flex: 1;
+      padding: 15px 30px;
+      font-size: 1.1rem;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.3s;
+      font-weight: bold;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    .btn-start {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-stop {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      color: white;
+    }
+
+    .transcript-area {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 15px;
+      padding: 20px;
+      min-height: 300px;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+
+    .transcript-item {
+      margin-bottom: 15px;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+    }
+
+    .transcript-speaker {
+      font-weight: bold;
+      color: #ffd700;
+      margin-bottom: 5px;
+    }
+
+    .transcript-mic {
+      font-weight: bold;
+      color: #87ceeb;
+      margin-bottom: 5px;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 30px;
+      opacity: 0.7;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎙️ Meeting Assistant</h1>
+    
+    <div class="status-card">
+      <span class="status-badge status-idle" id="statusBadge">待機中 (Idle)</span>
+      <h2>システムステータス</h2>
+      <p id="statusText">会議を待機しています...</p>
+      
+      <div class="controls">
+        <button class="btn-start" id="startBtn">会議を開始</button>
+        <button class="btn-stop" id="stopBtn" disabled>会議を終了</button>
+      </div>
+    </div>
+
+    <div class="transcript-area" id="transcriptArea">
+      <p style="text-align: center; opacity: 0.5;">文字起こしがここに表示されます</p>
+    </div>
+
+    <div class="footer">
+      Meeting Assistant v0.1.0 - Powered by Whisper & Electron
+    </div>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    let isRecording = false;
+
+    const statusBadge = document.getElementById('statusBadge');
+    const statusText = document.getElementById('statusText');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const transcriptArea = document.getElementById('transcriptArea');
+
+    startBtn.addEventListener('click', async () => {
+      const result = await ipcRenderer.invoke('start-recording');
+      if (result.success) {
+        isRecording = true;
+        updateStatus('active');
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+      }
+    });
+
+    stopBtn.addEventListener('click', async () => {
+      const result = await ipcRenderer.invoke('stop-recording');
+      if (result.success) {
+        isRecording = false;
+        updateStatus('idle');
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      }
+    });
+
+    function updateStatus(status) {
+      statusBadge.className = 'status-badge';
+      
+      switch (status) {
+        case 'idle':
+          statusBadge.classList.add('status-idle');
+          statusBadge.textContent = '待機中 (Idle)';
+          statusText.textContent = '会議を待機しています...';
+          break;
+        case 'standby':
+          statusBadge.classList.add('status-standby');
+          statusBadge.textContent = '準備中 (Standby)';
+          statusText.textContent = '会議が検知されました。開始しますか？';
+          break;
+        case 'active':
+          statusBadge.classList.add('status-active');
+          statusBadge.textContent = '録音中 (Active)';
+          statusText.textContent = '会議を録音・文字起こし中...';
+          break;
+      }
+    }
+
+    function addTranscript(source, text) {
+      const item = document.createElement('div');
+      item.className = 'transcript-item';
+      
+      const label = document.createElement('div');
+      label.className = source === 'speaker' ? 'transcript-speaker' : 'transcript-mic';
+      label.textContent = source === 'speaker' ? '🔊 Speaker' : '🎤 Microphone';
+      
+      const content = document.createElement('div');
+      content.textContent = text;
+      
+      item.appendChild(label);
+      item.appendChild(content);
+      
+      // 最初の説明テキストをクリア
+      if (transcriptArea.children.length === 1 && 
+          transcriptArea.children[0].tagName === 'P') {
+        transcriptArea.innerHTML = '';
+      }
+      
+      transcriptArea.appendChild(item);
+      transcriptArea.scrollTop = transcriptArea.scrollHeight;
+    }
+
+    // テスト用（後でWebSocket経由のリアルタイム受信に置き換え）
+    setTimeout(() => {
+      addTranscript('speaker', 'こんにちは、本日はお集まりいただきありがとうございます。');
+    }, 3000);
+
+    setTimeout(() => {
+      addTranscript('mic', 'よろしくお願いします。');
+    }, 5000);
+  </script>
+</body>
+</html>

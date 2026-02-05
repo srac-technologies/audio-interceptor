@@ -1,0 +1,20 @@
+{
+  "name": "meeting-assistant-ui",
+  "version": "0.1.0",
+  "description": "Meeting Assistant Electron UI",
+  "main": "main/index.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron ."
+  },
+  "keywords": [
+    "electron",
+    "meeting",
+    "assistant"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^40.1.0"
+  }
+}
