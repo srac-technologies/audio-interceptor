@@ -3,3 +3,7 @@ __pycache__/
 *.spec
 dist/
 build/
+.env
+*.pyc
+venv/
+node_modules/

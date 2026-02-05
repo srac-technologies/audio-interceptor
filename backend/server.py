@@ -11,13 +11,20 @@ import json
 from pathlib import Path
 from typing import Optional
 
+# .envファイルを読み込む
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenvがない場合はスキップ
+
 try:
     from fastapi import FastAPI, WebSocket, HTTPException
     from fastapi.middleware.cors import CORSMiddleware
     from pydantic import BaseModel
     import uvicorn
 except ImportError:
-    print("⚠️  FastAPI not installed. Install with: pip install fastapi uvicorn websockets")
+    print("⚠️  FastAPI not installed. Install with: pip install fastapi uvicorn websockets python-dotenv")
     sys.exit(1)
 
 # AudioInterceptorをインポート

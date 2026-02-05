@@ -44,7 +44,7 @@ pip install --upgrade pip
 
 # 依存関係をインストール
 echo "📥 Installing dependencies..."
-pip install fastapi uvicorn websockets
+pip install -r requirements.txt
 
 echo ""
 echo "✅ Setup complete!"
