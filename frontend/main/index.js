@@ -159,19 +159,11 @@ function startPythonBackend() {
     pythonExecutable = path.join(resourcesPath, 'backend', 'server');
     console.log('[Backend] Using packaged backend:', pythonExecutable);
   } else {
-    // 開発モード: venv内のPythonを優先して使用
+    // 開発モード: システムのpython3を使用（--userパッケージ利用）
     const backendDir = path.join(__dirname, '../../backend');
-    const venvPython = path.join(backendDir, 'venv/bin/python3');
-    
-    if (fs.existsSync(venvPython)) {
-      pythonExecutable = venvPython;
-      console.log('[Backend] Using venv Python:', venvPython);
-    } else {
-      pythonExecutable = 'python3';
-      console.log('[Backend] Using system Python (venv not found)');
-    }
-    
+    pythonExecutable = '/usr/bin/python3';
     pythonArgs = [path.join(backendDir, 'server.py')];
+    console.log('[Backend] Using system Python:', pythonExecutable);
   }
   
   pythonProcess = spawn(pythonExecutable, pythonArgs, {
