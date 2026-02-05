@@ -339,7 +339,7 @@
           startBtn.disabled = true;
           stopBtn.disabled = false;
           transcribeCheckbox.disabled = true;
-          meetingTypeSelect.disabled = true;
+          // タイトルと会議種別は録音中も変更可能（disabledにしない）
           
           statusCard.innerHTML = `
             <div class="status-indicator" style="background: #48bb78;"></div>
