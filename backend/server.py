@@ -179,6 +179,9 @@ async def start_recording(request: RecordingStartRequest):
     if state.recording:
         return {"success": False, "message": "Already recording"}
     
+    # デバッグ：リクエスト内容をログ出力
+    print(f"🔍 Recording start request: transcribe_mode={request.transcribe_mode}, meeting_type_id={request.meeting_type_id}")
+    
     try:
         # 会議種別を設定
         state.active_meeting_type_id = request.meeting_type_id

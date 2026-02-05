@@ -323,7 +323,7 @@
       }
       
       const options = {
-        transcribe: true,
+        transcribe_mode: true,
         meeting_type_id: meetingTypeSelect.value ? parseInt(meetingTypeSelect.value) : null,
         title: meetingTitle.value || '無題の会議'
       };
@@ -773,7 +773,7 @@
         }
         
         const options = {
-          transcribe: transcribeCheckbox.checked,
+          transcribe_mode: transcribeCheckbox.checked,
           meeting_type_id: meetingTypeSelect.value ? parseInt(meetingTypeSelect.value) : null,
           title: meetingTitle.value || '無題の会議'
         };
