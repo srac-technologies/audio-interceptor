@@ -12,10 +12,13 @@ from pathlib import Path
 from typing import Optional
 from contextlib import asynccontextmanager
 
-# .envファイルを読み込む
+# .envファイルを読み込む（パッケージモードでは設定ディレクトリから）
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    config_dir = os.getenv('MEETING_ASSISTANT_CONFIG_DIR', os.path.dirname(__file__))
+    env_path = os.path.join(config_dir, '.env')
+    load_dotenv(env_path)
+    print(f"📁 Config directory: {config_dir}")
 except ImportError:
     pass  # python-dotenvがない場合はスキップ
 

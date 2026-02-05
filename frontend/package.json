@@ -1,23 +1,60 @@
 {
-  "name": "meeting-assistant-ui",
+  "name": "meeting-assistant",
+  "productName": "Meeting Assistant",
   "version": "0.1.0",
-  "description": "Meeting Assistant Electron UI",
+  "description": "AI-powered meeting assistant with real-time transcription and advice",
   "main": "main/index.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electron ."
+    "dev": "electron .",
+    "build": "electron-builder",
+    "build:linux": "electron-builder --linux",
+    "build:all": "electron-builder -mwl"
   },
   "keywords": [
     "electron",
     "meeting",
-    "assistant"
+    "assistant",
+    "transcription",
+    "AI"
   ],
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^40.1.0"
+    "electron": "^40.1.0",
+    "electron-builder": "^26.7.0"
   },
   "dependencies": {
     "active-win": "^8.2.0"
+  },
+  "build": {
+    "appId": "com.meetingassistant.app",
+    "productName": "Meeting Assistant",
+    "files": [
+      "main/**/*",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend/dist/server",
+        "to": "backend/server"
+      },
+      {
+        "from": "../backend/.env.example",
+        "to": "backend/.env.example"
+      }
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office"
+    },
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    }
   }
 }
