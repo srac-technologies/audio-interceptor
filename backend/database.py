@@ -123,5 +123,33 @@ def create_meeting_type(name: str, description: str = "") -> int:
     conn.close()
     return new_id
 
+def delete_meeting_type(type_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    # 関連するプロンプトも削除
+    cursor.execute('DELETE FROM prompts WHERE meeting_type_id = ?', (type_id,))
+    cursor.execute('DELETE FROM meeting_types WHERE id = ?', (type_id,))
+    conn.commit()
+    conn.close()
+
+def create_prompt(meeting_type_id: int, trigger_condition: str, action_prompt: str) -> int:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT INTO prompts (meeting_type_id, trigger_condition, action_prompt) VALUES (?, ?, ?)',
+        (meeting_type_id, trigger_condition, action_prompt)
+    )
+    new_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return new_id
+
+def delete_prompt(prompt_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM prompts WHERE id = ?', (prompt_id,))
+    conn.commit()
+    conn.close()
+
 if __name__ == "__main__":
     init_db()

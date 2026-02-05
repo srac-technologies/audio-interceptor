@@ -75,6 +75,15 @@ class RecordingStartRequest(BaseModel):
     tmp_dir: str = "./tmp"
     meeting_type_id: Optional[int] = None
 
+class MeetingTypeCreate(BaseModel):
+    name: str
+    description: str = ""
+
+class PromptCreate(BaseModel):
+    meeting_type_id: int
+    trigger_condition: str
+    action_prompt: str
+
 @app.get("/")
 async def root():
     return {
@@ -273,6 +282,30 @@ async def list_meeting_types():
 async def list_prompts(type_id: int):
     """指定された会議種別のプロンプト一覧を取得"""
     return {"prompts": database.get_prompts_for_type(type_id)}
+
+@app.post("/meeting-types")
+async def create_meeting_type(item: MeetingTypeCreate):
+    """会議種別を作成"""
+    new_id = database.create_meeting_type(item.name, item.description)
+    return {"id": new_id, "name": item.name, "description": item.description}
+
+@app.delete("/meeting-types/{type_id}")
+async def delete_meeting_type(type_id: int):
+    """会議種別を削除"""
+    database.delete_meeting_type(type_id)
+    return {"success": True}
+
+@app.post("/prompts")
+async def create_prompt(item: PromptCreate):
+    """プロンプトを作成"""
+    new_id = database.create_prompt(item.meeting_type_id, item.trigger_condition, item.action_prompt)
+    return {"id": new_id, "meeting_type_id": item.meeting_type_id}
+
+@app.delete("/prompts/{prompt_id}")
+async def delete_prompt(prompt_id: int):
+    """プロンプトを削除"""
+    database.delete_prompt(prompt_id)
+    return {"success": True}
 
 if __name__ == "__main__":
     print("🚀 Starting Meeting Assistant Backend Server...")

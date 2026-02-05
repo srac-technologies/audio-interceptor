@@ -132,6 +132,12 @@
   <div class="container">
     <h1>🎙️ Meeting Assistant</h1>
     
+    <div style="position: absolute; top: 20px; right: 20px;">
+      <button id="settingsBtn" style="background: rgba(255,255,255,0.2); padding: 8px 15px; font-size: 0.9rem;">
+        ⚙️ 設定
+      </button>
+    </div>
+    
     <div class="status-card">
       <span class="status-badge status-idle" id="statusBadge">待機中 (Idle)</span>
       <h2>システムステータス</h2>
@@ -166,6 +172,43 @@
     </div>
   </div>
 
+  <!-- Settings Modal -->
+  <div id="settingsModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background: #2d3748; width: 90%; max-width: 1000px; height: 80%; border-radius: 10px; padding: 20px; display: flex; flex-direction: column; color: white;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">
+        <h2>マスタ管理</h2>
+        <button id="closeSettingsBtn" style="background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer;">&times;</button>
+      </div>
+      
+      <div style="display: flex; flex: 1; gap: 20px; overflow: hidden;">
+        <!-- Left Pane: Meeting Types -->
+        <div style="flex: 1; display: flex; flex-direction: column; border-right: 1px solid rgba(255,255,255,0.1); padding-right: 20px;">
+          <h3>会議種別</h3>
+          <div id="meetingTypeList" style="flex: 1; overflow-y: auto; margin: 10px 0; background: rgba(0,0,0,0.2); border-radius: 5px; padding: 10px;">
+            <!-- List items will go here -->
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <input type="text" id="newTypeName" placeholder="種別名" style="flex: 1; padding: 8px; border-radius: 4px; border: none;">
+            <button id="addTypeBtn" style="background: #48bb78; color: white; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer;">追加</button>
+          </div>
+        </div>
+        
+        <!-- Right Pane: Prompts -->
+        <div style="flex: 2; display: flex; flex-direction: column;">
+          <h3 id="promptsHeader">プロンプト設定 (選択してください)</h3>
+          <div id="promptsList" style="flex: 1; overflow-y: auto; margin: 10px 0; background: rgba(0,0,0,0.2); border-radius: 5px; padding: 10px;">
+            <!-- Prompts will go here -->
+          </div>
+          <div id="promptForm" style="display: none; flex-direction: column; gap: 10px; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px;">
+            <input type="text" id="newTrigger" placeholder="トリガー条件 (例: 価格が高いと言われた時)" style="padding: 8px; border-radius: 4px; border: none;">
+            <textarea id="newAction" placeholder="AIへの指示 (例: ROIを強調する提案をして)" style="padding: 8px; border-radius: 4px; border: none; height: 60px;"></textarea>
+            <button id="addPromptBtn" style="background: #48bb78; color: white; padding: 8px; border: none; border-radius: 4px; cursor: pointer;">プロンプトを追加</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     const { ipcRenderer } = require('electron');
 
@@ -179,7 +222,171 @@
     const transcribeCheckbox = document.getElementById('transcribeCheckbox');
     const meetingTypeSelect = document.getElementById('meetingTypeSelect');
     
-    // 会議種別をロード
+    // --- Settings UI Logic ---
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsModal = document.getElementById('settingsModal');
+    const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+    const meetingTypeList = document.getElementById('meetingTypeList');
+    const promptsList = document.getElementById('promptsList');
+    const promptsHeader = document.getElementById('promptsHeader');
+    const promptForm = document.getElementById('promptForm');
+    
+    let selectedTypeId = null;
+
+    settingsBtn.addEventListener('click', () => {
+      settingsModal.style.display = 'flex';
+      renderMeetingTypes();
+    });
+
+    closeSettingsBtn.addEventListener('click', () => {
+      settingsModal.style.display = 'none';
+      loadMeetingTypes(); // Refresh main dropdown
+    });
+
+    // 会議種別一覧のレンダリング
+    async function renderMeetingTypes() {
+      const response = await fetch('http://localhost:8000/meeting-types');
+      const data = await response.json();
+      
+      meetingTypeList.innerHTML = '';
+      data.meeting_types.forEach(type => {
+        const item = document.createElement('div');
+        item.style.padding = '10px';
+        item.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+        item.style.cursor = 'pointer';
+        item.style.display = 'flex';
+        item.style.justifyContent = 'space-between';
+        
+        if (selectedTypeId === type.id) {
+          item.style.background = 'rgba(66, 153, 225, 0.5)';
+        }
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = type.name;
+        
+        const delBtn = document.createElement('button');
+        delBtn.textContent = '×';
+        delBtn.style.padding = '2px 8px';
+        delBtn.style.background = '#e53e3e';
+        delBtn.style.fontSize = '0.8rem';
+        delBtn.onclick = (e) => {
+          e.stopPropagation();
+          deleteMeetingType(type.id);
+        };
+        
+        item.appendChild(nameSpan);
+        item.appendChild(delBtn);
+        
+        item.onclick = () => selectType(type);
+        meetingTypeList.appendChild(item);
+      });
+    }
+
+    function selectType(type) {
+      selectedTypeId = type.id;
+      promptsHeader.textContent = `${type.name} のプロンプト設定`;
+      promptForm.style.display = 'flex';
+      renderMeetingTypes(); // Update highlight
+      renderPrompts(type.id);
+    }
+
+    // プロンプト一覧のレンダリング
+    async function renderPrompts(typeId) {
+      const response = await fetch(`http://localhost:8000/meeting-types/${typeId}/prompts`);
+      const data = await response.json();
+      
+      promptsList.innerHTML = '';
+      data.prompts.forEach(prompt => {
+        const item = document.createElement('div');
+        item.style.background = 'rgba(255,255,255,0.05)';
+        item.style.padding = '10px';
+        item.style.marginBottom = '10px';
+        item.style.borderRadius = '5px';
+        
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.justifyContent = 'space-between';
+        header.style.marginBottom = '5px';
+        
+        const trigger = document.createElement('div');
+        trigger.style.fontWeight = 'bold';
+        trigger.style.color = '#fbd38d';
+        trigger.textContent = `条件: ${prompt.trigger_condition}`;
+        
+        const delBtn = document.createElement('button');
+        delBtn.textContent = '削除';
+        delBtn.style.padding = '2px 8px';
+        delBtn.style.background = '#e53e3e';
+        delBtn.style.fontSize = '0.8rem';
+        delBtn.onclick = () => deletePrompt(prompt.id);
+        
+        header.appendChild(trigger);
+        header.appendChild(delBtn);
+        
+        const action = document.createElement('div');
+        action.textContent = `指示: ${prompt.action_prompt}`;
+        action.style.fontSize = '0.9rem';
+        action.style.opacity = '0.8';
+        
+        item.appendChild(header);
+        item.appendChild(action);
+        promptsList.appendChild(item);
+      });
+    }
+
+    // 作成・削除処理
+    document.getElementById('addTypeBtn').addEventListener('click', async () => {
+      const nameInput = document.getElementById('newTypeName');
+      if (!nameInput.value) return;
+      
+      await fetch('http://localhost:8000/meeting-types', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nameInput.value })
+      });
+      nameInput.value = '';
+      renderMeetingTypes();
+    });
+
+    async function deleteMeetingType(id) {
+      if (!confirm('この種別と関連するプロンプトを全て削除しますか？')) return;
+      await fetch(`http://localhost:8000/meeting-types/${id}`, { method: 'DELETE' });
+      if (selectedTypeId === id) {
+        selectedTypeId = null;
+        promptsList.innerHTML = '';
+        promptForm.style.display = 'none';
+        promptsHeader.textContent = 'プロンプト設定 (選択してください)';
+      }
+      renderMeetingTypes();
+    }
+
+    document.getElementById('addPromptBtn').addEventListener('click', async () => {
+      const trigger = document.getElementById('newTrigger');
+      const action = document.getElementById('newAction');
+      
+      if (!selectedTypeId || !trigger.value || !action.value) return;
+      
+      await fetch('http://localhost:8000/prompts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          meeting_type_id: selectedTypeId,
+          trigger_condition: trigger.value,
+          action_prompt: action.value
+        })
+      });
+      trigger.value = '';
+      action.value = '';
+      renderPrompts(selectedTypeId);
+    });
+
+    async function deletePrompt(id) {
+      if (!confirm('削除しますか？')) return;
+      await fetch(`http://localhost:8000/prompts/${id}`, { method: 'DELETE' });
+      renderPrompts(selectedTypeId);
+    }
+
+    // 会議種別をロード (初期化)
     async function loadMeetingTypes() {
       try {
         const response = await fetch('http://localhost:8000/meeting-types');
