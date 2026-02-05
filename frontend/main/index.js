@@ -1,9 +1,12 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
+const activeWin = require('active-win');
 
 let mainWindow = null;
 let pythonProcess = null;
+let detectionInterval = null;
+let lastDetectedApp = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -53,9 +56,85 @@ function stopPythonBackend() {
   }
 }
 
+// 会議検知ロジック
+async function detectMeeting() {
+  try {
+    const window = await activeWin();
+    if (!window) return;
+
+    const title = (window.title || '').toLowerCase();
+    const owner = (window.owner?.name || '').toLowerCase();
+
+    // 検知パターン
+    const meetingPatterns = [
+      { name: 'Zoom', keywords: ['zoom'], ownerKeywords: ['zoom'], titleKeywords: ['zoom meeting'] },
+      { name: 'Google Meet', keywords: ['meet.google.com'], ownerKeywords: ['chrome', 'edge', 'brave'], titleKeywords: ['meet.google.com'] },
+      { name: 'Microsoft Teams', keywords: ['teams'], ownerKeywords: ['teams'], titleKeywords: ['microsoft teams', 'teams meeting'] }
+    ];
+
+    for (const pattern of meetingPatterns) {
+      const ownerMatch = pattern.ownerKeywords.some(k => owner.includes(k));
+      const titleMatch = pattern.titleKeywords.some(k => title.includes(k));
+      
+      // Google Meetの場合はtitleにURL必須、他はownerまたはtitleのマッチでOK
+      if (pattern.name === 'Google Meet' && titleMatch && ownerMatch) {
+        notifyMeetingDetected(pattern.name, window.title);
+        return;
+      } else if (pattern.name !== 'Google Meet' && (ownerMatch || titleMatch)) {
+        notifyMeetingDetected(pattern.name, window.title);
+        return;
+      }
+    }
+
+    // 検知されなくなったらリセット
+    if (lastDetectedApp) {
+      lastDetectedApp = null;
+    }
+
+  } catch (error) {
+    // エラーは静かに無視（権限エラーなど）
+    if (error.message && !error.message.includes('permission')) {
+      console.error('Detection error:', error);
+    }
+  }
+}
+
+function notifyMeetingDetected(appName, windowTitle) {
+  // 同じアプリを連続して通知しない
+  if (lastDetectedApp === appName) return;
+  
+  lastDetectedApp = appName;
+  console.log(`Meeting detected: ${appName}`);
+  
+  if (mainWindow) {
+    mainWindow.webContents.send('meeting-detected', {
+      app: appName,
+      title: windowTitle
+    });
+  }
+}
+
+// 検知の開始・停止
+function startMeetingDetection() {
+  if (detectionInterval) return;
+  
+  console.log('Starting meeting detection...');
+  detectionInterval = setInterval(detectMeeting, 2000); // 2秒ごとにチェック
+  detectMeeting(); // 即座に1回実行
+}
+
+function stopMeetingDetection() {
+  if (detectionInterval) {
+    clearInterval(detectionInterval);
+    detectionInterval = null;
+    console.log('Meeting detection stopped');
+  }
+}
+
 app.whenReady().then(() => {
   createWindow();
   startPythonBackend();
+  startMeetingDetection(); // 会議検知を開始
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -65,6 +144,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  stopMeetingDetection();
   stopPythonBackend();
   if (process.platform !== 'darwin') {
     app.quit();
@@ -72,6 +152,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  stopMeetingDetection();
   stopPythonBackend();
 });
 

@@ -16,5 +16,8 @@
   "license": "MIT",
   "devDependencies": {
     "electron": "^40.1.0"
+  },
+  "dependencies": {
+    "active-win": "^8.2.0"
   }
 }
