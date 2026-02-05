@@ -6,14 +6,32 @@
 
 https://platform.openai.com/api-keys からAPIキーを作成。
 
-### 2. 環境変数を設定
+### 2. APIキーを設定
 
-**一時的に設定（現在のセッションのみ）:**
+**方法1: .envファイル（推奨）**
+
+既に設定済みです！`backend/.env` ファイルに自動的にAPIキーが書き込まれています。
+
+確認方法：
+```bash
+cat ~/workspace/audio-interceptor/backend/.env
+```
+
+新しいAPIキーに変更したい場合：
+```bash
+nano ~/workspace/audio-interceptor/backend/.env
+# または
+echo 'OPENAI_API_KEY=sk-proj-...' > ~/workspace/audio-interceptor/backend/.env
+```
+
+**方法2: 環境変数（一時的）**
+
 ```bash
 export OPENAI_API_KEY="sk-proj-..."
 ```
 
-**永続的に設定（推奨）:**
+**方法3: 環境変数（永続的）**
+
 ```bash
 # bashの場合
 echo 'export OPENAI_API_KEY="sk-proj-..."' >> ~/.bashrc
