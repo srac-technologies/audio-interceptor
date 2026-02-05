@@ -77,11 +77,36 @@ app.on('before-quit', () => {
 
 // IPC handlers
 ipcMain.handle('start-recording', async () => {
-  // TODO: Pythonバックエンドに録音開始を通知
-  return { success: true };
+  try {
+    const response = await fetch('http://localhost:8000/recording/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        transcribe_mode: false,
+        tmp_dir: './tmp'
+      })
+    });
+    
+    const result = await response.json();
+    console.log('Recording started:', result);
+    return result;
+  } catch (error) {
+    console.error('Failed to start recording:', error);
+    return { success: false, message: error.message };
+  }
 });
 
 ipcMain.handle('stop-recording', async () => {
-  // TODO: Pythonバックエンドに録音停止を通知
-  return { success: true };
+  try {
+    const response = await fetch('http://localhost:8000/recording/stop', {
+      method: 'POST'
+    });
+    
+    const result = await response.json();
+    console.log('Recording stopped:', result);
+    return result;
+  } catch (error) {
+    console.error('Failed to stop recording:', error);
+    return { success: false, message: error.message };
+  }
 });

@@ -164,22 +164,34 @@
     const transcriptArea = document.getElementById('transcriptArea');
 
     startBtn.addEventListener('click', async () => {
-      const result = await ipcRenderer.invoke('start-recording');
-      if (result.success) {
-        isRecording = true;
-        updateStatus('active');
-        startBtn.disabled = true;
-        stopBtn.disabled = false;
+      try {
+        const result = await ipcRenderer.invoke('start-recording');
+        if (result.success) {
+          isRecording = true;
+          updateStatus('active');
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
+        } else {
+          alert(`録音開始エラー: ${result.message || '不明なエラー'}`);
+        }
+      } catch (error) {
+        alert(`録音開始エラー: ${error.message}`);
       }
     });
 
     stopBtn.addEventListener('click', async () => {
-      const result = await ipcRenderer.invoke('stop-recording');
-      if (result.success) {
-        isRecording = false;
-        updateStatus('idle');
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
+      try {
+        const result = await ipcRenderer.invoke('stop-recording');
+        if (result.success) {
+          isRecording = false;
+          updateStatus('idle');
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+        } else {
+          alert(`録音停止エラー: ${result.message || '不明なエラー'}`);
+        }
+      } catch (error) {
+        alert(`録音停止エラー: ${error.message}`);
       }
     });
 
