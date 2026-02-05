@@ -76,13 +76,13 @@ app.on('before-quit', () => {
 });
 
 // IPC handlers
-ipcMain.handle('start-recording', async () => {
+ipcMain.handle('start-recording', async (event, options) => {
   try {
     const response = await fetch('http://localhost:8000/recording/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        transcribe_mode: false,
+        transcribe_mode: options?.transcribe || false,
         tmp_dir: './tmp'
       })
     });

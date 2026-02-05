@@ -141,6 +141,13 @@
         <button class="btn-start" id="startBtn">会議を開始</button>
         <button class="btn-stop" id="stopBtn" disabled>会議を終了</button>
       </div>
+      
+      <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.2);">
+        <label style="display: flex; align-items: center; cursor: pointer;">
+          <input type="checkbox" id="transcribeCheckbox" style="margin-right: 10px; width: 20px; height: 20px;">
+          <span>文字起こしを有効にする（Whisper API）</span>
+        </label>
+      </div>
     </div>
 
     <div class="transcript-area" id="transcriptArea">
@@ -162,15 +169,21 @@
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const transcriptArea = document.getElementById('transcriptArea');
+    const transcribeCheckbox = document.getElementById('transcribeCheckbox');
 
     startBtn.addEventListener('click', async () => {
       try {
-        const result = await ipcRenderer.invoke('start-recording');
+        const options = {
+          transcribe: transcribeCheckbox.checked
+        };
+        
+        const result = await ipcRenderer.invoke('start-recording', options);
         if (result.success) {
           isRecording = true;
           updateStatus('active');
           startBtn.disabled = true;
           stopBtn.disabled = false;
+          transcribeCheckbox.disabled = true;
         } else {
           alert(`録音開始エラー: ${result.message || '不明なエラー'}`);
         }
@@ -187,6 +200,7 @@
           updateStatus('idle');
           startBtn.disabled = false;
           stopBtn.disabled = true;
+          transcribeCheckbox.disabled = false;
         } else {
           alert(`録音停止エラー: ${result.message || '不明なエラー'}`);
         }
