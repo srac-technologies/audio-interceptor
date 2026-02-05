@@ -161,6 +161,11 @@
       </div>
       
       <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.2);">
+        <label style="display: block; margin-bottom: 10px; font-weight: bold;">ミーティングタイトル</label>
+        <input type="text" id="meetingTitle" placeholder="例: 週次定例、営業商談、採用面接..." style="width: 100%; padding: 10px; border-radius: 5px; border: none; background: rgba(255,255,255,0.2); color: white; font-size: 1rem;">
+      </div>
+
+      <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.2);">
         <label style="display: block; margin-bottom: 10px; font-weight: bold;">会議種別（AIアドバイス用）</label>
         <select id="meetingTypeSelect" style="width: 100%; padding: 10px; border-radius: 5px; border: none; background: rgba(255,255,255,0.2); color: white; font-size: 1rem;">
           <option value="">選択してください（アドバイスなし）</option>
@@ -294,12 +299,19 @@
       // 自動的に文字起こしを有効にして開始
       const transcribeCheckbox = document.getElementById('transcribeCheckbox');
       const meetingTypeSelect = document.getElementById('meetingTypeSelect');
+      const meetingTitle = document.getElementById('meetingTitle');
       
       transcribeCheckbox.checked = true;
       
+      // タイトルが未入力の場合、検知されたアプリ名をデフォルトに
+      if (!meetingTitle.value && detectedMeetingInfo) {
+        meetingTitle.value = `${detectedMeetingInfo.app} ミーティング`;
+      }
+      
       const options = {
         transcribe: true,
-        meeting_type_id: meetingTypeSelect.value ? parseInt(meetingTypeSelect.value) : null
+        meeting_type_id: meetingTypeSelect.value ? parseInt(meetingTypeSelect.value) : null,
+        title: meetingTitle.value || '無題の会議'
       };
       
       try {
@@ -338,6 +350,7 @@
     const adviceArea = document.getElementById('adviceArea'); // 追加
     const transcribeCheckbox = document.getElementById('transcribeCheckbox');
     const meetingTypeSelect = document.getElementById('meetingTypeSelect');
+    const meetingTitle = document.getElementById('meetingTitle');
     
     // --- History UI Logic ---
     const historyBtn = document.getElementById('historyBtn');
@@ -621,6 +634,9 @@
         const response = await fetch('http://localhost:8000/meeting-types');
         const data = await response.json();
         
+        // 既存のオプション（最初の空オプション以外）をクリア
+        meetingTypeSelect.innerHTML = '<option value="">選択してください</option>';
+        
         data.meeting_types.forEach(type => {
           const option = document.createElement('option');
           option.value = type.id;
@@ -628,12 +644,16 @@
           option.title = type.description;
           meetingTypeSelect.appendChild(option);
         });
+        console.log(`✅ Loaded ${data.meeting_types.length} meeting types`);
       } catch (error) {
         console.error('Failed to load meeting types:', error);
+        // リトライ（5秒後）
+        setTimeout(loadMeetingTypes, 5000);
       }
     }
     
-    loadMeetingTypes();
+    // 初回ロード（バックエンド起動待ちで遅延）
+    setTimeout(loadMeetingTypes, 2000);
     
     // WebSocket接続管理
     let ws = null;
@@ -648,6 +668,8 @@
           clearInterval(reconnectTimer);
           reconnectTimer = null;
         }
+        // バックエンドが準備完了なので、会議種別をロード
+        loadMeetingTypes();
       };
 
       ws.onmessage = (event) => {
@@ -724,7 +746,8 @@
       try {
         const options = {
           transcribe: transcribeCheckbox.checked,
-          meeting_type_id: meetingTypeSelect.value ? parseInt(meetingTypeSelect.value) : null
+          meeting_type_id: meetingTypeSelect.value ? parseInt(meetingTypeSelect.value) : null,
+          title: meetingTitle.value || '無題の会議'
         };
         
         const result = await startRecordingCommon(options);
@@ -734,7 +757,7 @@
           startBtn.disabled = true;
           stopBtn.disabled = false;
           transcribeCheckbox.disabled = true;
-          meetingTypeSelect.disabled = true;
+          // タイトルと会議種別は録音中も変更可能にする（disabledにしない）
         } else {
           alert(`録音開始エラー: ${result.message || '不明なエラー'}`);
         }
@@ -752,12 +775,49 @@
           startBtn.disabled = false;
           stopBtn.disabled = true;
           transcribeCheckbox.disabled = false;
-          meetingTypeSelect.disabled = false;
         } else {
           alert(`録音停止エラー: ${result.message || '不明なエラー'}`);
         }
       } catch (error) {
         alert(`録音停止エラー: ${error.message}`);
+      }
+    });
+
+    // 録音中のタイトル・会議種別変更を監視
+    let updateDebounceTimer = null;
+    
+    meetingTitle.addEventListener('input', () => {
+      if (!isRecording) return;
+      
+      clearTimeout(updateDebounceTimer);
+      updateDebounceTimer = setTimeout(async () => {
+        try {
+          await fetch('http://localhost:8000/recording', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: meetingTitle.value })
+          });
+          console.log('✅ Title updated');
+        } catch (error) {
+          console.error('Failed to update title:', error);
+        }
+      }, 1000); // 1秒のデバウンス
+    });
+    
+    meetingTypeSelect.addEventListener('change', async () => {
+      if (!isRecording) return;
+      
+      try {
+        await fetch('http://localhost:8000/recording', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            meeting_type_id: meetingTypeSelect.value ? parseInt(meetingTypeSelect.value) : null 
+          })
+        });
+        console.log('✅ Meeting type updated');
+      } catch (error) {
+        console.error('Failed to update meeting type:', error);
       }
     });
 

@@ -78,6 +78,7 @@ class RecordingStartRequest(BaseModel):
     transcribe_mode: bool = False
     tmp_dir: str = "./tmp"
     meeting_type_id: Optional[int] = None
+    title: Optional[str] = None
 
 class MeetingTypeCreate(BaseModel):
     name: str
@@ -87,6 +88,10 @@ class PromptCreate(BaseModel):
     meeting_type_id: int
     trigger_condition: str
     action_prompt: str
+
+class RecordingUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    meeting_type_id: Optional[int] = None
 
 @app.get("/")
 async def root():
@@ -176,11 +181,12 @@ async def start_recording(request: RecordingStartRequest):
             print(f"📋 Meeting Type ID: {state.active_meeting_type_id}")
             
         # 新しいセッションを作成
+        session_title = request.title or f"Meeting {state.active_meeting_type_id or 'Untitled'}"
         state.current_session_id = database.create_session(
             state.active_meeting_type_id, 
-            title=f"Meeting {state.active_meeting_type_id}" # TODO: より良いタイトル生成
+            title=session_title
         )
-        print(f"🆕 Session started: ID {state.current_session_id}")
+        print(f"🆕 Session started: ID {state.current_session_id}, Title: {session_title}")
             
         # LLMパイプライン初期化
         if request.transcribe_mode and state.active_meeting_type_id:
@@ -257,6 +263,41 @@ async def stop_recording():
         
     except Exception as e:
         print(f"❌ Failed to stop recording: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/recording")
+async def update_recording(request: RecordingUpdateRequest):
+    """録音中の設定を更新（タイトル、会議種別）"""
+    if not state.recording or not state.current_session_id:
+        return {"success": False, "message": "Not recording"}
+    
+    try:
+        conn = database.get_db_connection()
+        cursor = conn.cursor()
+        
+        if request.title is not None:
+            cursor.execute('UPDATE sessions SET title = ? WHERE id = ?', (request.title, state.current_session_id))
+            print(f"📝 Session title updated: {request.title}")
+        
+        if request.meeting_type_id is not None:
+            cursor.execute('UPDATE sessions SET meeting_type_id = ? WHERE id = ?', (request.meeting_type_id, state.current_session_id))
+            state.active_meeting_type_id = request.meeting_type_id
+            
+            # LLMパイプラインを再初期化
+            if state.llm_pipeline and request.meeting_type_id:
+                state.llm_pipeline = LLMPipeline(
+                    meeting_type_id=request.meeting_type_id,
+                    on_advice=on_advice_callback
+                )
+                print(f"🔄 LLM Pipeline reloaded for meeting type: {request.meeting_type_id}")
+            
+        conn.commit()
+        conn.close()
+        
+        return {"success": True, "message": "Recording updated"}
+        
+    except Exception as e:
+        print(f"❌ Failed to update recording: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.websocket("/ws")

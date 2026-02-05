@@ -196,6 +196,7 @@ ipcMain.handle('start-recording', async (event, options) => {
       body: JSON.stringify({
         transcribe_mode: options?.transcribe || false,
         meeting_type_id: options?.meeting_type_id || null,
+        title: options?.title || '無題の会議',
         tmp_dir: './tmp'
       })
     });
