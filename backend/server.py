@@ -10,6 +10,7 @@ import os
 import json
 from pathlib import Path
 from typing import Optional
+from contextlib import asynccontextmanager
 
 # .envファイルを読み込む
 try:
@@ -30,7 +31,27 @@ except ImportError:
 # AudioInterceptorをインポート
 from audio_interceptor import AudioInterceptor
 
-app = FastAPI(title="Meeting Assistant API")
+# グローバル状態
+class AppState:
+    def __init__(self):
+        self.recording = False
+        self.websocket_clients = set()
+        self.interceptor: Optional[AudioInterceptor] = None
+        self.loop = None
+
+state = AppState()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 起動時
+    state.loop = asyncio.get_running_loop()
+    print("✅ Event loop captured")
+    yield
+    # 終了時
+    if state.interceptor:
+        state.interceptor.cleanup()
+
+app = FastAPI(title="Meeting Assistant API", lifespan=lifespan)
 
 # CORS設定（Electronからのアクセスを許可）
 app.add_middleware(
@@ -46,15 +67,6 @@ class RecordingStartRequest(BaseModel):
     target_sink: Optional[str] = None
     transcribe_mode: bool = False
     tmp_dir: str = "./tmp"
-
-# グローバル状態
-class AppState:
-    def __init__(self):
-        self.recording = False
-        self.websocket_clients = set()
-        self.interceptor: Optional[AudioInterceptor] = None
-
-state = AppState()
 
 @app.get("/")
 async def root():
@@ -99,6 +111,11 @@ async def get_available_sinks():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+def on_transcript_callback(source, text):
+    """AudioInterceptorからのコールバック（別スレッドで呼ばれる）"""
+    if state.loop and state.loop.is_running():
+        asyncio.run_coroutine_threadsafe(broadcast_transcript(source, text), state.loop)
+
 @app.post("/recording/start")
 async def start_recording(request: RecordingStartRequest):
     """録音開始"""
@@ -110,23 +127,9 @@ async def start_recording(request: RecordingStartRequest):
         state.interceptor = AudioInterceptor(
             tmp_dir=request.tmp_dir,
             target_sink=request.target_sink,
-            transcribe_mode=request.transcribe_mode
+            transcribe_mode=request.transcribe_mode,
+            on_transcript=on_transcript_callback
         )
-        
-        # 文字起こしコールバックを登録（WebSocket配信用）
-        if request.transcribe_mode:
-            # オリジナルのtranscribe_audioメソッドをラップ
-            original_transcribe = state.interceptor.transcribe_audio
-            
-            def transcribe_with_broadcast(filename, label):
-                # 元の文字起こし処理を実行
-                original_transcribe(filename, label)
-                
-                # WebSocket経由で配信（非同期なので別途処理が必要）
-                # ここでは簡易的にログ出力のみ
-                # 実際の配信は後で実装
-            
-            state.interceptor.transcribe_audio = transcribe_with_broadcast
         
         # セットアップ
         state.interceptor.setup()

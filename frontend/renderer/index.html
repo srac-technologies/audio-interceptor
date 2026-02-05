@@ -170,6 +170,68 @@
     const stopBtn = document.getElementById('stopBtn');
     const transcriptArea = document.getElementById('transcriptArea');
     const transcribeCheckbox = document.getElementById('transcribeCheckbox');
+    
+    // WebSocket接続管理
+    let ws = null;
+    let reconnectTimer = null;
+
+    function connectWebSocket() {
+      ws = new WebSocket('ws://localhost:8000/ws');
+
+      ws.onopen = () => {
+        console.log('✅ WebSocket Connected');
+        if (reconnectTimer) {
+          clearInterval(reconnectTimer);
+          reconnectTimer = null;
+        }
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          
+          if (message.type === 'transcript') {
+            addTranscript(message.source, message.text);
+          } else if (message.type === 'status') {
+            // サーバーからのステータス同期
+            if (message.recording && !isRecording) {
+              isRecording = true;
+              updateStatus('active');
+              startBtn.disabled = true;
+              stopBtn.disabled = false;
+              transcribeCheckbox.disabled = true;
+            } else if (!message.recording && isRecording) {
+              isRecording = false;
+              updateStatus('idle');
+              startBtn.disabled = false;
+              stopBtn.disabled = true;
+              transcribeCheckbox.disabled = false;
+            }
+          }
+        } catch (e) {
+          console.error('Failed to parse WebSocket message:', e);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log('❌ WebSocket Disconnected');
+        // 再接続ロジック
+        if (!reconnectTimer) {
+          reconnectTimer = setInterval(() => {
+            console.log('🔄 Reconnecting WebSocket...');
+            connectWebSocket();
+          }, 3000);
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.error('WebSocket Error:', err);
+        ws.close();
+      };
+    }
+
+    // 初期化時に接続開始
+    connectWebSocket();
 
     startBtn.addEventListener('click', async () => {
       try {
@@ -254,15 +316,6 @@
       transcriptArea.appendChild(item);
       transcriptArea.scrollTop = transcriptArea.scrollHeight;
     }
-
-    // テスト用（後でWebSocket経由のリアルタイム受信に置き換え）
-    setTimeout(() => {
-      addTranscript('speaker', 'こんにちは、本日はお集まりいただきありがとうございます。');
-    }, 3000);
-
-    setTimeout(() => {
-      addTranscript('mic', 'よろしくお願いします。');
-    }, 5000);
   </script>
 </body>
 </html>

@@ -26,7 +26,7 @@ CHUNK_SECONDS = 10
 SAMPLE_WIDTH = 2  # 16-bit
 
 class AudioInterceptor:
-    def __init__(self, tmp_dir="./tmp", target_sink=None, transcribe_mode=False):
+    def __init__(self, tmp_dir="./tmp", target_sink=None, transcribe_mode=False, on_transcript=None):
         self.virtual_sink_name = "virtual_speaker_interceptor"
         self.tmp_dir = Path(tmp_dir)
         self.running = True
@@ -36,6 +36,7 @@ class AudioInterceptor:
         self.default_source = None
         self.target_sink = target_sink
         self.transcribe_mode = transcribe_mode
+        self.on_transcript = on_transcript
         self.openai_api_key = os.environ.get("OPENAI_API_KEY")
         
         if self.transcribe_mode and not self.openai_api_key:
@@ -348,6 +349,13 @@ class AudioInterceptor:
                     # ログに出力
                     prefix = "[Speaker 🔊]" if label == "speaker" else "[Mic 🎤]"
                     print(f"\n{prefix} {text}\n")
+                    
+                    # コールバックがあれば呼ぶ
+                    if self.on_transcript:
+                        try:
+                            self.on_transcript(label, text)
+                        except Exception as cb_err:
+                            print(f"⚠️ Callback error: {cb_err}")
                     
         except urllib.error.HTTPError as e:
             print(f"⚠️ Transcription failed: HTTP {e.code} - {e.reason}")
