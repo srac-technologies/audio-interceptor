@@ -15,6 +15,7 @@ import json
 import uuid
 import urllib.request
 import urllib.error
+import array
 from pathlib import Path
 from datetime import datetime
 
@@ -239,9 +240,40 @@ class AudioInterceptor:
         except Exception as e:
             print(f"❌ Failed to write WAV file {filename}: {e}")
 
+    def is_silent(self, filename, threshold=500):
+        """音声ファイルが無音かどうかをチェック"""
+        try:
+            with wave.open(str(filename), 'rb') as wav_file:
+                # サンプル数を取得
+                n_frames = wav_file.getnframes()
+                
+                # 全フレームを読み込む
+                frames = wav_file.readframes(n_frames)
+                
+                # 16-bit PCMデータをint16配列に変換
+                samples = array.array('h', frames)
+                
+                # RMS（二乗平均平方根）を計算
+                if len(samples) == 0:
+                    return True
+                
+                sum_squares = sum(s * s for s in samples)
+                rms = (sum_squares / len(samples)) ** 0.5
+                
+                # 閾値以下なら無音とみなす
+                return rms < threshold
+        except Exception as e:
+            print(f"⚠️ Failed to check silence: {e}")
+            return False
+    
     def transcribe_audio(self, filename, label):
         """Whisper APIを使って文字起こし"""
         try:
+            # 無音チェック
+            if self.is_silent(filename):
+                print(f"🔇 Skipping silent audio: {filename.name}")
+                return
+            
             boundary = uuid.uuid4().hex
             data = []
             
@@ -252,7 +284,8 @@ class AudioInterceptor:
             data.append(b'')
             
             with open(filename, 'rb') as f:
-                data.append(f.read())
+                audio_bytes = f.read()
+                data.append(audio_bytes)
             
             # Model part
             data.append(f'--{boundary}'.encode())
@@ -265,6 +298,12 @@ class AudioInterceptor:
             data.append(b'Content-Disposition: form-data; name="language"')
             data.append(b'')
             data.append(b'ja')
+            
+            # Prompt to improve accuracy and avoid hallucinations
+            data.append(f'--{boundary}'.encode())
+            data.append(b'Content-Disposition: form-data; name="prompt"')
+            data.append(b'')
+            data.append('会議の音声です。無音の場合は空文字を返してください。'.encode('utf-8'))
 
             # End marker
             data.append(f'--{boundary}--'.encode())
@@ -285,6 +324,26 @@ class AudioInterceptor:
             with urllib.request.urlopen(req) as response:
                 result = json.loads(response.read().decode())
                 text = result.get('text', '').strip()
+                
+                # 定型文フィルタリング（Whisperのハルシネーション対策）
+                hallucination_phrases = [
+                    'ご視聴ありがとうございました',
+                    'ご視聴ありがとうございます',
+                    'チャンネル登録',
+                    '高評価',
+                    'ご清聴ありがとうございました',
+                    'Thanks for watching',
+                    'Subscribe',
+                    'Like and subscribe'
+                ]
+                
+                # 定型文が含まれていて、かつ短い場合はスキップ
+                if text and len(text) < 50:
+                    for phrase in hallucination_phrases:
+                        if phrase in text:
+                            print(f"🚫 Filtered hallucination: {text}")
+                            return
+                
                 if text:
                     # ログに出力
                     prefix = "[Speaker 🔊]" if label == "speaker" else "[Mic 🎤]"
