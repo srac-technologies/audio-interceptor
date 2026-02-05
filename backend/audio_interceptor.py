@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Audio Interceptor v3 - PulseAudio/PipeWire両対応
-スピーカー出力とマイク入力をインターセプトして記録 + Whisper API文字起こし
+スピーカー出力とマイク入力をインターセプトして記録 + Whisper文字起こし
 """
 
 import os
@@ -12,10 +12,7 @@ import signal
 import subprocess
 import threading
 import json
-import uuid
-import urllib.request
-import urllib.error
-import array
+import asyncio
 from pathlib import Path
 from datetime import datetime
 
@@ -37,12 +34,18 @@ class AudioInterceptor:
         self.target_sink = target_sink
         self.transcribe_mode = transcribe_mode
         self.on_transcript = on_transcript
-        self.openai_api_key = os.environ.get("OPENAI_API_KEY")
         
-        if self.transcribe_mode and not self.openai_api_key:
-            print("⚠️  Warning: Transcribe mode enabled but OPENAI_API_KEY is not set.")
-            print("   Falling back to recording only mode.")
-            self.transcribe_mode = False
+        # Transcription Serviceの初期化（遅延初期化）
+        self.transcription_service = None
+        if self.transcribe_mode:
+            try:
+                from transcription import get_transcription_service
+                self.transcription_service = get_transcription_service()
+                print(f"✅ Transcription Service initialized: mode={self.transcription_service.mode}, model={self.transcription_service.model_name}")
+            except Exception as e:
+                print(f"⚠️  Warning: Failed to initialize Transcription Service: {e}")
+                print("   Falling back to recording only mode.")
+                self.transcribe_mode = False
             
     def get_default_source(self):
         """デフォルトのマイクソースを取得"""
@@ -268,98 +271,60 @@ class AudioInterceptor:
             return False
     
     def transcribe_audio(self, filename, label):
-        """Whisper APIを使って文字起こし"""
+        """Transcription Serviceを使って文字起こし（API/Localモード統合版）"""
         try:
             # 無音チェック
             if self.is_silent(filename):
                 print(f"🔇 Skipping silent audio: {filename.name}")
                 return
             
-            boundary = uuid.uuid4().hex
-            data = []
+            if not self.transcription_service:
+                print("⚠️ Transcription service not available")
+                return
             
-            # File part
-            data.append(f'--{boundary}'.encode())
-            data.append(f'Content-Disposition: form-data; name="file"; filename="{filename.name}"'.encode())
-            data.append(b'Content-Type: audio/wav')
-            data.append(b'')
+            # asyncioループで実行
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                result = loop.run_until_complete(
+                    self.transcription_service.transcribe(str(filename))
+                )
+            finally:
+                loop.close()
             
-            with open(filename, 'rb') as f:
-                audio_bytes = f.read()
-                data.append(audio_bytes)
+            text = result.get('text', '').strip()
             
-            # Model part
-            data.append(f'--{boundary}'.encode())
-            data.append(b'Content-Disposition: form-data; name="model"')
-            data.append(b'')
-            data.append(b'whisper-1')
+            # ハルシネーション対策フィルタ
+            hallucination_phrases = [
+                'ご視聴ありがとうございました',
+                'ご視聴ありがとうございます',
+                'チャンネル登録',
+                '高評価',
+                'ご清聴ありがとうございました',
+                'Thanks for watching',
+                'Subscribe',
+                'Like and subscribe'
+            ]
             
-            # Language (optional, auto-detect is usually fine but 'ja' helps accuracy)
-            data.append(f'--{boundary}'.encode())
-            data.append(b'Content-Disposition: form-data; name="language"')
-            data.append(b'')
-            data.append(b'ja')
+            # 短いテキストに定型文が含まれる場合はスキップ
+            if text and len(text) < 50:
+                for phrase in hallucination_phrases:
+                    if phrase in text:
+                        print(f"🚫 Filtered hallucination: {text}")
+                        return
             
-            # Prompt to improve accuracy and avoid hallucinations
-            data.append(f'--{boundary}'.encode())
-            data.append(b'Content-Disposition: form-data; name="prompt"')
-            data.append(b'')
-            data.append('会議の音声です。無音の場合は空文字を返してください。'.encode('utf-8'))
-
-            # End marker
-            data.append(f'--{boundary}--'.encode())
-            data.append(b'')
-            
-            body = b'\r\n'.join(data)
-            
-            req = urllib.request.Request(
-                "https://api.openai.com/v1/audio/transcriptions",
-                data=body,
-                headers={
-                    "Content-Type": f"multipart/form-data; boundary={boundary}",
-                    "Authorization": f"Bearer {self.openai_api_key}"
-                },
-                method="POST"
-            )
-            
-            with urllib.request.urlopen(req) as response:
-                result = json.loads(response.read().decode())
-                text = result.get('text', '').strip()
+            if text:
+                # ログ出力
+                prefix = "[Speaker 🔊]" if label == "speaker" else "[Mic 🎤]"
+                print(f"\n{prefix} {text}\n")
                 
-                # 定型文フィルタリング（Whisperのハルシネーション対策）
-                hallucination_phrases = [
-                    'ご視聴ありがとうございました',
-                    'ご視聴ありがとうございます',
-                    'チャンネル登録',
-                    '高評価',
-                    'ご清聴ありがとうございました',
-                    'Thanks for watching',
-                    'Subscribe',
-                    'Like and subscribe',
-                    '無音の場合は空文字を返してください'  # プロンプト自体の漏れ対策
-                ]
-                
-                # 定型文が含まれていて、かつ短い場合はスキップ
-                if text and len(text) < 50:
-                    for phrase in hallucination_phrases:
-                        if phrase in text:
-                            print(f"🚫 Filtered hallucination: {text}")
-                            return
-                
-                if text:
-                    # ログに出力
-                    prefix = "[Speaker 🔊]" if label == "speaker" else "[Mic 🎤]"
-                    print(f"\n{prefix} {text}\n")
+                # コールバック呼び出し
+                if self.on_transcript:
+                    try:
+                        self.on_transcript(label, text)
+                    except Exception as cb_err:
+                        print(f"⚠️ Callback error: {cb_err}")
                     
-                    # コールバックがあれば呼ぶ
-                    if self.on_transcript:
-                        try:
-                            self.on_transcript(label, text)
-                        except Exception as cb_err:
-                            print(f"⚠️ Callback error: {cb_err}")
-                    
-        except urllib.error.HTTPError as e:
-            print(f"⚠️ Transcription failed: HTTP {e.code} - {e.reason}")
         except Exception as e:
             print(f"⚠️ Transcription error: {e}")
 
