@@ -23,7 +23,7 @@ CHUNK_SECONDS = 10
 SAMPLE_WIDTH = 2  # 16-bit
 
 class AudioInterceptor:
-    def __init__(self, tmp_dir="./tmp", target_sink=None, transcribe_mode=False, on_transcript=None):
+    def __init__(self, tmp_dir="./tmp", target_sink=None, transcribe_enabled=False, on_transcript=None):
         self.virtual_sink_name = "virtual_speaker_interceptor"
         self.tmp_dir = Path(tmp_dir)
         self.running = True
@@ -32,12 +32,12 @@ class AudioInterceptor:
         self.threads = []
         self.default_source = None
         self.target_sink = target_sink
-        self.transcribe_mode = transcribe_mode
+        self.transcribe_enabled = transcribe_enabled
         self.on_transcript = on_transcript
         
         # Transcription Serviceの初期化（遅延初期化）
         self.transcription_service = None
-        if self.transcribe_mode:
+        if self.transcribe_enabled:
             try:
                 from transcription import get_transcription_service
                 self.transcription_service = get_transcription_service()
@@ -45,7 +45,7 @@ class AudioInterceptor:
             except Exception as e:
                 print(f"⚠️  Warning: Failed to initialize Transcription Service: {e}")
                 print("   Falling back to recording only mode.")
-                self.transcribe_mode = False
+                self.transcribe_enabled = False
             
     def get_default_source(self):
         """デフォルトのマイクソースを取得"""
@@ -104,7 +104,7 @@ class AudioInterceptor:
             print("\n📋 Setup complete!")
             print(f"   Virtual Speaker: {self.virtual_sink_name}")
             print(f"   Microphone: {self.default_source or 'default'}")
-            if self.transcribe_mode:
+            if self.transcribe_enabled:
                 print("   📝 Transcription: ENABLED (Whisper API)")
             else:
                 print("   📝 Transcription: DISABLED")
@@ -216,7 +216,7 @@ class AudioInterceptor:
                     print(f"✅ Saved {label} chunk {chunk_index}: {filename.name} ({size_kb:.1f} KB)")
                     
                     # 文字起こしモードならAPIに投げる
-                    if self.transcribe_mode:
+                    if self.transcribe_enabled:
                         transcribe_thread = threading.Thread(
                             target=self.transcribe_audio,
                             args=(filename, label),
@@ -401,7 +401,7 @@ def print_instructions(interceptor):
     print(f"\n💾 Recording:")
     print(f"   - Location: {interceptor.tmp_dir.absolute()}")
     print(f"   - Format: 10-second WAV chunks")
-    print(f"   - Mode: {'Transcription + Recording' if interceptor.transcribe_mode else 'Recording only'}")
+    print(f"   - Mode: {'Transcription + Recording' if interceptor.transcribe_enabled else 'Recording only'}")
     if interceptor.target_sink:
         print(f"   - Loopback: {interceptor.target_sink}")
     else:
@@ -416,13 +416,13 @@ def main():
     print("\n=== Audio Interceptor Setup ===")
     
     # モード選択
-    transcribe_mode = select_mode()
+    transcribe_enabled = select_mode()
     
     # スピーカー選択
     target_sink = select_sink()
     
     # インターセプターを初期化
-    interceptor = AudioInterceptor(tmp_dir, target_sink, transcribe_mode)
+    interceptor = AudioInterceptor(tmp_dir, target_sink, transcribe_enabled)
     
     # シグナルハンドラを設定
     def shutdown_handler(sig, frame):

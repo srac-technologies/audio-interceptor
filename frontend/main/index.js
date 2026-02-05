@@ -344,7 +344,7 @@ ipcMain.handle('start-recording', async (event, options) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        transcribe_mode: options?.transcribe_mode || false,
+        transcribe_enabled: options?.transcribe_enabled || false,
         meeting_type_id: options?.meeting_type_id || null,
         title: options?.title || '無題の会議',
         tmp_dir: './tmp'

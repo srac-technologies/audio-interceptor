@@ -80,7 +80,7 @@ app.add_middleware(
 # リクエストボディのモデル
 class RecordingStartRequest(BaseModel):
     target_sink: Optional[str] = None
-    transcribe_mode: bool = False
+    transcribe_enabled: bool = False
     tmp_dir: str = "./tmp"
     meeting_type_id: Optional[int] = None
     title: Optional[str] = None
@@ -112,7 +112,7 @@ async def get_status():
     return {
         "recording": state.recording,
         "connected_clients": len(state.websocket_clients),
-        "transcribe_mode": state.interceptor.transcribe_mode if state.interceptor else False
+        "transcribe_enabled": state.interceptor.transcribe_enabled if state.interceptor else False
     }
 
 @app.get("/sinks")
@@ -180,7 +180,7 @@ async def start_recording(request: RecordingStartRequest):
         return {"success": False, "message": "Already recording"}
     
     # デバッグ：リクエスト内容をログ出力
-    print(f"🔍 Recording start request: transcribe_mode={request.transcribe_mode}, meeting_type_id={request.meeting_type_id}")
+    print(f"🔍 Recording start request: transcribe_enabled={request.transcribe_enabled}, meeting_type_id={request.meeting_type_id}")
     
     try:
         # 会議種別を設定
@@ -197,7 +197,7 @@ async def start_recording(request: RecordingStartRequest):
         print(f"🆕 Session started: ID {state.current_session_id}, Title: {session_title}")
             
         # LLMパイプライン初期化
-        if request.transcribe_mode and state.active_meeting_type_id:
+        if request.transcribe_enabled and state.active_meeting_type_id:
             state.llm_pipeline = LLMPipeline(
                 meeting_type_id=state.active_meeting_type_id,
                 on_advice=on_advice_callback
@@ -210,7 +210,7 @@ async def start_recording(request: RecordingStartRequest):
         state.interceptor = AudioInterceptor(
             tmp_dir=request.tmp_dir,
             target_sink=request.target_sink,
-            transcribe_mode=request.transcribe_mode,
+            transcribe_enabled=request.transcribe_enabled,
             on_transcript=on_transcript_callback
         )
         
@@ -233,7 +233,7 @@ async def start_recording(request: RecordingStartRequest):
             "config": {
                 "tmp_dir": request.tmp_dir,
                 "target_sink": request.target_sink or "default",
-                "transcribe_mode": request.transcribe_mode
+                "transcribe_enabled": request.transcribe_enabled
             }
         }
         
