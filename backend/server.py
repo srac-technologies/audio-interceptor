@@ -32,6 +32,8 @@ except ImportError:
 from audio_interceptor import AudioInterceptor
 # Databaseをインポート
 import database
+# LLMPipelineをインポート
+from llm_pipeline import LLMPipeline
 
 # グローバル状態
 class AppState:
@@ -39,6 +41,7 @@ class AppState:
         self.recording = False
         self.websocket_clients = set()
         self.interceptor: Optional[AudioInterceptor] = None
+        self.llm_pipeline: Optional[LLMPipeline] = None
         self.loop = None
         self.active_meeting_type_id: Optional[int] = None
 
@@ -130,7 +133,16 @@ async def get_available_sinks():
 def on_transcript_callback(source, text):
     """AudioInterceptorからのコールバック（別スレッドで呼ばれる）"""
     if state.loop and state.loop.is_running():
+        # 文字起こし配信
         asyncio.run_coroutine_threadsafe(broadcast_transcript(source, text), state.loop)
+        
+        # LLMパイプライン処理（文字起こしモードが有効で、パイプラインがある場合）
+        if state.llm_pipeline:
+            asyncio.run_coroutine_threadsafe(state.llm_pipeline.process_transcript(source, text), state.loop)
+
+async def on_advice_callback(advice_data):
+    """LLMパイプラインからのアドバイスコールバック"""
+    await broadcast_advice(advice_data)
 
 @app.post("/recording/start")
 async def start_recording(request: RecordingStartRequest):
@@ -143,6 +155,16 @@ async def start_recording(request: RecordingStartRequest):
         state.active_meeting_type_id = request.meeting_type_id
         if state.active_meeting_type_id:
             print(f"📋 Meeting Type ID: {state.active_meeting_type_id}")
+            
+        # LLMパイプライン初期化
+        if request.transcribe_mode and state.active_meeting_type_id:
+            state.llm_pipeline = LLMPipeline(
+                meeting_type_id=state.active_meeting_type_id,
+                on_advice=on_advice_callback
+            )
+            print("🧠 LLM Pipeline initialized")
+        else:
+            state.llm_pipeline = None
             
         # AudioInterceptorインスタンスを作成
         state.interceptor = AudioInterceptor(
@@ -250,6 +272,23 @@ async def broadcast_transcript(source: str, text: str):
             disconnected.add(client)
     
     # 切断されたクライアントを削除
+    state.websocket_clients -= disconnected
+
+async def broadcast_advice(advice_data: dict):
+    """全接続クライアントにアドバイスを配信"""
+    message = advice_data
+    # typeはLLMPipeline側ですでに "advice" に設定されている想定だが念のため
+    if "type" not in message:
+        message["type"] = "advice"
+        
+    message_str = json.dumps(message)
+    
+    disconnected = set()
+    for client in state.websocket_clients:
+        try:
+            await client.send_text(message_str)
+        except:
+            disconnected.add(client)
     state.websocket_clients -= disconnected
 
 async def broadcast_status(status: str):

@@ -163,8 +163,22 @@
       </div>
     </div>
 
-    <div class="transcript-area" id="transcriptArea">
-      <p style="text-align: center; opacity: 0.5;">文字起こしがここに表示されます</p>
+    <div style="display: flex; gap: 20px; min-height: 400px; max-height: 600px;">
+      <!-- 左側: 文字起こし -->
+      <div style="flex: 2; display: flex; flex-direction: column;">
+        <h3>文字起こし</h3>
+        <div class="transcript-area" id="transcriptArea" style="flex: 1; max-height: none;">
+          <p style="text-align: center; opacity: 0.5;">文字起こしがここに表示されます</p>
+        </div>
+      </div>
+      
+      <!-- 右側: AIアドバイス -->
+      <div style="flex: 1; display: flex; flex-direction: column;">
+        <h3>🤖 AIアドバイス</h3>
+        <div id="adviceArea" style="flex: 1; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border-radius: 15px; padding: 20px; overflow-y: auto;">
+          <p style="text-align: center; opacity: 0.5;">ここにアドバイスが表示されます</p>
+        </div>
+      </div>
     </div>
 
     <div class="footer">
@@ -219,6 +233,7 @@
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const transcriptArea = document.getElementById('transcriptArea');
+    const adviceArea = document.getElementById('adviceArea'); // 追加
     const transcribeCheckbox = document.getElementById('transcribeCheckbox');
     const meetingTypeSelect = document.getElementById('meetingTypeSelect');
     
@@ -427,6 +442,8 @@
           
           if (message.type === 'transcript') {
             addTranscript(message.source, message.text);
+          } else if (message.type === 'advice') {
+            addAdvice(message);
           } else if (message.type === 'status') {
             // サーバーからのステータス同期
             if (message.recording && !isRecording) {
@@ -553,6 +570,49 @@
       
       transcriptArea.appendChild(item);
       transcriptArea.scrollTop = transcriptArea.scrollHeight;
+    }
+
+    function addAdvice(data) {
+      const item = document.createElement('div');
+      item.style.background = 'rgba(255, 255, 255, 0.1)';
+      item.style.padding = '15px';
+      item.style.marginBottom = '15px';
+      item.style.borderRadius = '10px';
+      item.style.borderLeft = '4px solid #48bb78';
+      item.style.animation = 'fadeIn 0.5s ease';
+      
+      const header = document.createElement('div');
+      header.style.display = 'flex';
+      header.style.justifyContent = 'space-between';
+      header.style.marginBottom = '8px';
+      header.style.fontSize = '0.8rem';
+      header.style.opacity = '0.7';
+      
+      const trigger = document.createElement('span');
+      trigger.textContent = `💡 ${data.trigger}`;
+      
+      const time = document.createElement('span');
+      time.textContent = new Date().toLocaleTimeString();
+      
+      header.appendChild(trigger);
+      header.appendChild(time);
+      
+      const content = document.createElement('div');
+      content.style.lineHeight = '1.5';
+      content.style.whiteSpace = 'pre-wrap';
+      content.textContent = data.text;
+      
+      item.appendChild(header);
+      item.appendChild(content);
+      
+      // 最初の説明テキストをクリア
+      if (adviceArea.children.length === 1 && 
+          adviceArea.children[0].tagName === 'P') {
+        adviceArea.innerHTML = '';
+      }
+      
+      adviceArea.appendChild(item);
+      adviceArea.scrollTop = adviceArea.scrollHeight;
     }
   </script>
 </body>
