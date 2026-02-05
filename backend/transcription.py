@@ -8,7 +8,10 @@ from typing import Optional, Dict, Any
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# .envファイルのパスを明示的に指定
+env_path = Path(__file__).parent / '.env'
+load_dotenv(dotenv_path=env_path)
+
 logger = logging.getLogger(__name__)
 
 # 設定
@@ -16,6 +19,11 @@ WHISPER_MODE = os.getenv("WHISPER_MODE", "local")  # "local" or "api"
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")  # tiny, base, small, medium, large-v3
 WHISPER_LANGUAGE = os.getenv("WHISPER_LANGUAGE", "ja")  # ja, en, auto
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# デバッグ: 環境変数の読み込み確認
+print(f"[DEBUG] transcription.py - .env path: {env_path}")
+print(f"[DEBUG] WHISPER_MODE={WHISPER_MODE}, WHISPER_MODEL={WHISPER_MODEL}, WHISPER_LANGUAGE={WHISPER_LANGUAGE}")
+print(f"[DEBUG] OPENAI_API_KEY={'set' if OPENAI_API_KEY else 'not set'}")
 
 
 class TranscriptionService:
