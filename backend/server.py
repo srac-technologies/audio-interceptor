@@ -305,6 +305,32 @@ async def update_recording(request: RecordingUpdateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket接続（リアルタイム文字起こし配信用）"""
+    await websocket.accept()
+    state.websocket_clients.add(websocket)
+    print(f"✅ WebSocket client connected. Total: {len(state.websocket_clients)}")
+    
+    # 現在のステータスを送信
+    await websocket.send_text(json.dumps({
+        "type": "status",
+        "recording": state.recording
+    }))
+    
+    try:
+        while True:
+            # クライアントからのメッセージを受信（keep-alive）
+            data = await websocket.receive_text()
+            # ping/pongハンドリング
+            if data == "ping":
+                await websocket.send_text("pong")
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+    finally:
+        state.websocket_clients.discard(websocket)
+        print(f"❌ WebSocket client disconnected. Total: {len(state.websocket_clients)}")
+
 # --- Settings API ---
 
 @app.get("/settings")
@@ -403,10 +429,28 @@ async def create_prompt_api(item: PromptCreate):
 @app.delete("/prompts/{pid}")
 async def delete_prompt_api(pid: int):
     database.delete_prompt(pid); return {"success": True}
+# --- Calendar APIs ---
+
 @app.get("/calendar/current")
-async def get_cal_curr(): return {"success": False} # 簡易化のため一旦無効
+async def get_current_calendar_event():
+    """現在時刻付近のカレンダーイベントを取得"""
+    settings = database.get_settings()
+    calendar_id = settings.get('calendar_id', 'primary')
+    
+    event = calendar_service.get_current_event(calendar_id=calendar_id)
+    if event:
+        return {"success": True, "event": event}
+    else:
+        return {"success": False, "message": "No event found"}
+
 @app.get("/calendar/today")
-async def get_cal_today(): return {"events": []}
+async def get_today_events():
+    """今日のカレンダーイベント一覧を取得"""
+    settings = database.get_settings()
+    calendar_id = settings.get('calendar_id', 'primary')
+    
+    events = calendar_service.get_events_today(calendar_id=calendar_id)
+    return {"events": events}
 
 if __name__ == "__main__":
     print("🚀 Meeting Assistant Backend v0.3.0")

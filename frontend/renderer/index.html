@@ -578,6 +578,11 @@
               <input type="text" id="settingSaveDir" placeholder="/home/user/Documents/MeetingLogs">
           </div>
           <div class="form-group">
+              <label>Google Calendar ID</label>
+              <input type="text" id="settingCalendarId" placeholder="primary または your.email@gmail.com">
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ サービスアカウント使用時は共有されたカレンダーID（通常はメールアドレス）を指定してください</div>
+          </div>
+          <div class="form-group">
               <label>サマリー生成用プロンプト</label>
               <textarea id="settingSummaryPrompt" style="height: 150px; font-family: monospace;"></textarea>
           </div>
@@ -914,6 +919,7 @@
         
         document.getElementById('settingAutoSummary').checked = s.auto_summary_enabled === 'true';
         document.getElementById('settingSaveDir').value = s.save_dir || '';
+        document.getElementById('settingCalendarId').value = s.calendar_id || 'primary';
         document.getElementById('settingSummaryPrompt').value = s.summary_prompt || '';
     }
 
@@ -921,6 +927,7 @@
         const settings = {
             auto_summary_enabled: document.getElementById('settingAutoSummary').checked ? 'true' : 'false',
             save_dir: document.getElementById('settingSaveDir').value,
+            calendar_id: document.getElementById('settingCalendarId').value,
             summary_prompt: document.getElementById('settingSummaryPrompt').value
         };
         

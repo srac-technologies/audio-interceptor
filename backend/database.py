@@ -89,7 +89,8 @@ def init_db():
     default_settings = {
         'auto_summary_enabled': 'true',
         'summary_prompt': '以下の会議の議事録を作成してください。\n\n# 要件\n- 重要な決定事項\n- 次のアクションアイテム\n- 議論の要約\nをMarkdown形式でまとめてください。',
-        'save_dir': str(Path.home() / "Documents" / "MeetingLogs")
+        'save_dir': str(Path.home() / "Documents" / "MeetingLogs"),
+        'calendar_id': 'primary'
     }
     
     for key, value in default_settings.items():
