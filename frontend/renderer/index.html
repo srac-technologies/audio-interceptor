@@ -174,7 +174,7 @@
       font-weight: 500;
     }
 
-    input[type="text"], select {
+    input[type="text"], select, textarea {
       width: 100%;
       padding: 8px 12px;
       background: rgba(0, 0, 0, 0.3);
@@ -186,7 +186,7 @@
       transition: border-color 0.2s;
     }
 
-    input[type="text"]:focus, select:focus {
+    input[type="text"]:focus, select:focus, textarea:focus {
       outline: none;
       border-color: #00ffaa;
     }
@@ -394,7 +394,7 @@
       border: 1px solid rgba(0, 255, 170, 0.2);
       width: 90%;
       max-width: 1000px;
-      height: 80%;
+      height: 90%;
       border-radius: 8px;
       padding: 20px;
       display: flex;
@@ -428,6 +428,34 @@
 
     .close-btn:hover {
       color: #fff;
+    }
+
+    /* タブ切り替え */
+    .tabs {
+        display: flex;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        margin-bottom: 20px;
+    }
+    .tab {
+        padding: 10px 20px;
+        cursor: pointer;
+        opacity: 0.6;
+        transition: all 0.2s;
+        border-bottom: 2px solid transparent;
+    }
+    .tab.active {
+        opacity: 1;
+        border-bottom-color: #00ffaa;
+        color: #00ffaa;
+    }
+    .tab-content {
+        display: none;
+        flex: 1;
+        overflow-y: auto;
+    }
+    .tab-content.active {
+        display: flex;
+        flex-direction: column;
     }
   </style>
 </head>
@@ -506,9 +534,20 @@
         <h2>履歴</h2>
         <button class="close-btn" id="closeHistoryBtn">&times;</button>
       </div>
-      <div style="flex: 1; overflow: auto;">
-        <div id="sessionList"></div>
-        <div id="historyDetailContent"></div>
+      <div style="display: flex; flex: 1; gap: 20px; overflow: hidden;">
+        <!-- 左側リスト -->
+        <div style="flex: 1; overflow-y: auto; border-right: 1px solid rgba(255,255,255,0.1); padding-right: 10px;">
+            <div id="sessionList"></div>
+        </div>
+        <!-- 右側詳細 -->
+        <div style="flex: 2; overflow-y: auto; padding: 0 10px; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
+                <button id="downloadDocxBtn" style="background: #4299e1; color: white; padding: 8px 15px; display: none;">📥 Docxでダウンロード</button>
+            </div>
+            <div id="historyDetailContent">
+                <p style="text-align: center; opacity: 0.5; margin-top: 50px;">左側から会議を選択してください</p>
+            </div>
+        </div>
       </div>
     </div>
   </div>
@@ -520,22 +559,54 @@
         <h2>設定</h2>
         <button class="close-btn" id="closeSettingsBtn">&times;</button>
       </div>
-      <div style="flex: 1; display: flex; gap: 20px;">
-        <div style="flex: 1;">
-          <h3>会議種別</h3>
-          <div id="meetingTypeList"></div>
-          <input type="text" id="newTypeName" placeholder="種別名">
-          <button id="addTypeBtn">追加</button>
-        </div>
-        <div style="flex: 2;">
-          <h3 id="promptsHeader">プロンプト</h3>
-          <div id="promptsList"></div>
-          <div id="promptForm" style="display: none;">
-            <input type="text" id="newTrigger" placeholder="トリガー条件">
-            <textarea id="newAction" placeholder="AIへの指示"></textarea>
-            <button id="addPromptBtn">追加</button>
+      
+      <div class="tabs">
+          <div class="tab active" data-tab="general">一般設定</div>
+          <div class="tab" data-tab="meeting-types">会議種別・プロンプト</div>
+      </div>
+
+      <!-- 一般設定タブ -->
+      <div id="tab-general" class="tab-content active">
+          <div class="form-group">
+              <label class="checkbox-group">
+                  <input type="checkbox" id="settingAutoSummary">
+                  <span>会議終了時にサマリーを自動生成＆保存する</span>
+              </label>
           </div>
-        </div>
+          <div class="form-group">
+              <label>保存先ディレクトリ</label>
+              <input type="text" id="settingSaveDir" placeholder="/home/user/Documents/MeetingLogs">
+          </div>
+          <div class="form-group">
+              <label>サマリー生成用プロンプト</label>
+              <textarea id="settingSummaryPrompt" style="height: 150px; font-family: monospace;"></textarea>
+          </div>
+          <div style="margin-top: 20px; text-align: right;">
+              <button id="saveSettingsBtn" style="background: #48bb78; color: white; width: auto; padding: 10px 30px;">設定を保存</button>
+          </div>
+      </div>
+
+      <!-- 会議種別タブ -->
+      <div id="tab-meeting-types" class="tab-content">
+          <div style="display: flex; flex: 1; gap: 20px; min-height: 0;">
+            <div style="flex: 1; display: flex; flex-direction: column;">
+              <h3>会議種別</h3>
+              <div id="meetingTypeList" style="flex: 1; overflow-y: auto; margin-bottom: 10px;"></div>
+              <div style="display: flex; gap: 5px;">
+                  <input type="text" id="newTypeName" placeholder="種別名">
+                  <button id="addTypeBtn" style="width: auto;">追加</button>
+              </div>
+            </div>
+            <div style="flex: 2; display: flex; flex-direction: column;">
+              <h3 id="promptsHeader">プロンプト</h3>
+              <div id="promptsList" style="flex: 1; overflow-y: auto; margin-bottom: 10px;"></div>
+              <div id="promptForm" style="display: none; flex-direction: column; gap: 10px;">
+                <input type="text" id="newTrigger" placeholder="トリガー条件">
+                <textarea id="newAction" placeholder="AIへの指示" style="height: 60px;"></textarea>
+                <button id="addPromptBtn">追加</button>
+              </div>
+            </div>
+          </div>
       </div>
     </div>
   </div>
@@ -545,6 +616,7 @@
 
     let isRecording = false;
     let ws = null;
+    let selectedTypeId = null;
 
     const statusIndicator = document.getElementById('statusIndicator');
     const statusText = document.getElementById('statusText');
@@ -715,7 +787,7 @@
         const response = await fetch('http://localhost:8000/meeting-types');
         const data = await response.json();
         
-        meetingTypeSelect.innerHTML = '<option value="">選択してください</option>';
+        meetingTypeSelect.innerHTML = '<option value="">選択してください（アドバイスなし）</option>';
         data.meeting_types.forEach(type => {
           const option = document.createElement('option');
           option.value = type.id;
@@ -728,9 +800,10 @@
       }
     }
 
-    // モーダル制御（簡易版）
+    // --- モーダル制御 ---
     document.getElementById('historyBtn').addEventListener('click', () => {
       document.getElementById('historyModal').style.display = 'flex';
+      renderHistoryList();
     });
 
     document.getElementById('closeHistoryBtn').addEventListener('click', () => {
@@ -739,11 +812,228 @@
 
     document.getElementById('settingsBtn').addEventListener('click', () => {
       document.getElementById('settingsModal').style.display = 'flex';
+      loadSettings();
+      renderMeetingTypes();
     });
 
     document.getElementById('closeSettingsBtn').addEventListener('click', () => {
       document.getElementById('settingsModal').style.display = 'none';
+      loadMeetingTypes(); // メイン画面のプルダウン更新
     });
+
+    // タブ切り替え
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            tab.classList.add('active');
+            document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+        });
+    });
+
+    // --- 履歴機能 ---
+    async function renderHistoryList() {
+      const res = await fetch('http://localhost:8000/history');
+      const data = await res.json();
+      const list = document.getElementById('sessionList');
+      list.innerHTML = '';
+      
+      data.sessions.forEach(s => {
+          const item = document.createElement('div');
+          item.style.padding = '10px';
+          item.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+          item.style.cursor = 'pointer';
+          item.innerHTML = `
+            <div style="font-weight:bold; margin-bottom:4px;">${s.title || 'Untitled'}</div>
+            <div style="font-size:0.8rem; opacity:0.6;">${new Date(s.start_time).toLocaleString()}</div>
+            <div style="font-size:0.8rem; color:#00ffaa;">${s.meeting_type_name || ''}</div>
+          `;
+          item.onclick = () => showHistoryDetail(s.id);
+          list.appendChild(item);
+      });
+    }
+
+    async function showHistoryDetail(sessionId) {
+        const res = await fetch(`http://localhost:8000/history/${sessionId}`);
+        const data = await res.json();
+        const content = document.getElementById('historyDetailContent');
+        const dlBtn = document.getElementById('downloadDocxBtn');
+        
+        dlBtn.style.display = 'block';
+        dlBtn.onclick = () => {
+            window.open(`http://localhost:8000/history/${sessionId}/download/docx`);
+        };
+
+        let html = '';
+        
+        // サマリーがあれば表示
+        if (data.session.summary) {
+            html += `
+                <div style="background: rgba(255,255,255,0.05); padding:15px; border-radius:8px; margin-bottom:20px;">
+                    <h3 style="margin-bottom:10px; color:#00ffaa;">📝 Summary</h3>
+                    <div style="white-space: pre-wrap; line-height:1.6;">${data.session.summary}</div>
+                </div>
+            `;
+        }
+
+        // ログ一覧
+        const allEvents = [
+            ...data.transcripts.map(t => ({...t, type: 'transcript'})),
+            ...data.advices.map(a => ({...a, type: 'advice'}))
+        ].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        allEvents.forEach(e => {
+            if (e.type === 'transcript') {
+                const icon = e.source === 'speaker' ? '🔊' : '🎤';
+                const color = e.source === 'speaker' ? '#00ffaa' : '#6496ff';
+                html += `
+                    <div style="margin-bottom:10px; font-size:0.9rem;">
+                        <span style="opacity:0.5; font-size:0.8rem;">${new Date(e.timestamp).toLocaleTimeString()}</span>
+                        <span style="color:${color}; font-weight:bold; margin:0 5px;">${icon} ${e.source.toUpperCase()}</span>
+                        <span>${e.text}</span>
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div style="margin:15px 0; padding:10px; background:rgba(255,200,100,0.1); border-left:3px solid #ffc864; border-radius:4px;">
+                        <div style="font-size:0.8rem; color:#ffc864; margin-bottom:5px;">💡 Advice (${e.trigger_condition})</div>
+                        <div>${e.advice_text}</div>
+                    </div>
+                `;
+            }
+        });
+        
+        content.innerHTML = html;
+    }
+
+    // --- 設定機能 ---
+    async function loadSettings() {
+        const res = await fetch('http://localhost:8000/settings');
+        const data = await res.json();
+        const s = data.settings;
+        
+        document.getElementById('settingAutoSummary').checked = s.auto_summary_enabled === 'true';
+        document.getElementById('settingSaveDir').value = s.save_dir || '';
+        document.getElementById('settingSummaryPrompt').value = s.summary_prompt || '';
+    }
+
+    document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
+        const settings = {
+            auto_summary_enabled: document.getElementById('settingAutoSummary').checked ? 'true' : 'false',
+            save_dir: document.getElementById('settingSaveDir').value,
+            summary_prompt: document.getElementById('settingSummaryPrompt').value
+        };
+        
+        await fetch('http://localhost:8000/settings', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({settings})
+        });
+        alert('設定を保存しました');
+    });
+
+    // 会議種別管理（簡易版）
+    async function renderMeetingTypes() {
+      const res = await fetch('http://localhost:8000/meeting-types');
+      const data = await res.json();
+      const list = document.getElementById('meetingTypeList');
+      list.innerHTML = '';
+      
+      data.meeting_types.forEach(t => {
+          const item = document.createElement('div');
+          item.style.padding = '8px';
+          item.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
+          item.style.display = 'flex';
+          item.style.justifyContent = 'space-between';
+          item.style.cursor = 'pointer';
+          if (selectedTypeId === t.id) item.style.background = 'rgba(0,255,170,0.1)';
+          
+          item.innerHTML = `<span>${t.name}</span><button onclick="deleteType(${t.id})" style="width:auto; padding:2px 8px; background:#e53e3e;">×</button>`;
+          item.onclick = (e) => {
+              if(e.target.tagName !== 'BUTTON') selectType(t);
+          };
+          list.appendChild(item);
+      });
+    }
+
+    // 他のマスタ管理関数（deleteType, selectType, addType, addPrompt, deletePrompt）も同様に実装する必要がありますが、
+    // 長くなるのでここでは基本骨格のみとします。実際のアプリではこれらもグローバル関数として定義してください。
+    window.deleteType = async (id) => {
+        if(!confirm('削除しますか？')) return;
+        await fetch(`http://localhost:8000/meeting-types/${id}`, {method: 'DELETE'});
+        renderMeetingTypes();
+        if(selectedTypeId === id) {
+            selectedTypeId = null;
+            document.getElementById('promptForm').style.display = 'none';
+            document.getElementById('promptsList').innerHTML = '';
+        }
+    };
+    
+    document.getElementById('addTypeBtn').addEventListener('click', async () => {
+        const name = document.getElementById('newTypeName').value;
+        if(!name) return;
+        await fetch('http://localhost:8000/meeting-types', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name})
+        });
+        document.getElementById('newTypeName').value = '';
+        renderMeetingTypes();
+    });
+
+    async function selectType(type) {
+        selectedTypeId = type.id;
+        document.getElementById('promptsHeader').textContent = `${type.name} のプロンプト`;
+        document.getElementById('promptForm').style.display = 'flex';
+        renderMeetingTypes(); // Update highlight
+        
+        const res = await fetch(`http://localhost:8000/meeting-types/${type.id}/prompts`);
+        const data = await res.json();
+        const list = document.getElementById('promptsList');
+        list.innerHTML = '';
+        data.prompts.forEach(p => {
+            const item = document.createElement('div');
+            item.style.background = 'rgba(255,255,255,0.05)';
+            item.style.padding = '8px';
+            item.style.marginBottom = '5px';
+            item.style.borderRadius = '4px';
+            item.innerHTML = `
+                <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                    <span style="color:#ffc864; font-weight:bold;">${p.trigger_condition}</span>
+                    <button onclick="deletePrompt(${p.id})" style="width:auto; padding:2px 5px; background:#e53e3e; font-size:0.7rem;">削除</button>
+                </div>
+                <div style="font-size:0.8rem; opacity:0.8;">${p.action_prompt}</div>
+            `;
+            list.appendChild(item);
+        });
+    }
+    
+    window.deletePrompt = async (id) => {
+        if(!confirm('削除しますか？')) return;
+        await fetch(`http://localhost:8000/prompts/${id}`, {method: 'DELETE'});
+        if(selectedTypeId) selectType({id: selectedTypeId, name: document.getElementById('promptsHeader').textContent.split(' ')[0]});
+    };
+
+    document.getElementById('addPromptBtn').addEventListener('click', async () => {
+        if(!selectedTypeId) return;
+        const trigger = document.getElementById('newTrigger').value;
+        const action = document.getElementById('newAction').value;
+        if(!trigger || !action) return;
+        
+        await fetch('http://localhost:8000/prompts', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                meeting_type_id: selectedTypeId,
+                trigger_condition: trigger,
+                action_prompt: action
+            })
+        });
+        document.getElementById('newTrigger').value = '';
+        document.getElementById('newAction').value = '';
+        selectType({id: selectedTypeId, name: document.getElementById('promptsHeader').textContent.split(' ')[0]});
+    });
+
   </script>
 </body>
 </html>

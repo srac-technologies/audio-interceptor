@@ -121,4 +121,41 @@ class LLMPipeline:
         except Exception as e:
             logger.error(f"Error in advice generation: {e}")
 
+    async def generate_summary(self, transcripts: List[Dict], prompt_text: str = None) -> str:
+        """会議全体のサマリーを生成する"""
+        if not self.client:
+            return "OpenAI API Key not set"
+            
+        full_text = "\n".join([f"[{t['source']}]: {t['text']}" for t in transcripts])
+        
+        default_prompt = """
+以下の会議の議事録を作成してください。
+
+# 要件
+- 重要な決定事項
+- 次のアクションアイテム
+- 議論の要約
+をMarkdown形式でまとめてください。
+"""
+        
+        system_prompt = prompt_text if prompt_text else default_prompt
+        
+        try:
+            logger.info("Generating meeting summary...")
+            response = await self.client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"# 会議ログ\n{full_text}"}
+                ],
+                temperature=0.5
+            )
+            summary = response.choices[0].message.content.strip()
+            logger.info("Summary generated successfully")
+            return summary
+            
+        except Exception as e:
+            logger.error(f"Error in summary generation: {e}")
+            return f"Error generating summary: {str(e)}"
+
 from datetime import datetime
