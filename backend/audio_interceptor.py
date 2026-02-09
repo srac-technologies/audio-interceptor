@@ -87,7 +87,7 @@ class AudioInterceptor:
             loopback_args = [
                 "pactl", "load-module", "module-loopback",
                 f"source={self.virtual_sink_name}.monitor",
-                "latency_msec=1"
+                "latency_msec=50"
             ]
             
             # ターゲットシンクが指定されている場合は追加
