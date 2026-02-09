@@ -222,7 +222,18 @@ async def start_recording(request: RecordingStartRequest):
     
     try:
         state.active_meeting_type_id = request.meeting_type_id
-        session_title = request.title or f"Meeting {state.active_meeting_type_id or 'Untitled'}"
+        
+        # タイトルが指定されていない場合、カレンダーから取得を試みる
+        session_title = request.title
+        if not session_title:
+            settings = database.get_settings()
+            calendar_id = settings.get('calendar_id', 'primary')
+            event = calendar_service.get_current_event(calendar_id=calendar_id, time_window_minutes=30)
+            if event:
+                session_title = event['summary']
+                print(f"📅 Calendar event found: {session_title}")
+            else:
+                session_title = f"Meeting {state.active_meeting_type_id or 'Untitled'}"
         
         state.current_session_id = database.create_session(
             state.active_meeting_type_id, 
