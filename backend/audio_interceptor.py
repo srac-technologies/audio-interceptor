@@ -34,6 +34,7 @@ class AudioInterceptor:
         self.target_sink = target_sink
         self.transcribe_enabled = transcribe_enabled
         self.on_transcript = on_transcript
+        self.mic_muted = False  # マイクミュート状態
         
         # Transcription Serviceの初期化（遅延初期化）
         self.transcription_service = None
@@ -113,6 +114,12 @@ class AudioInterceptor:
             print(f"❌ Setup failed: {e}")
             self.cleanup()
             sys.exit(1)
+    
+    def set_mic_mute(self, muted: bool):
+        """マイクのミュート状態を設定"""
+        self.mic_muted = muted
+        status = "MUTED 🔇" if muted else "UNMUTED 🎤"
+        print(f"🎤 Microphone {status}")
     
     def cleanup(self):
         """仮想オーディオデバイスをクリーンアップ"""
@@ -211,6 +218,12 @@ class AudioInterceptor:
                 
                 # WAVファイルに書き込む
                 if audio_data:
+                    # マイクミュート中はスキップ
+                    if label == "mic" and self.mic_muted:
+                        print(f"🔇 Mic muted - skipping chunk {chunk_index}")
+                        chunk_index += 1
+                        continue
+                    
                     self.write_wav(filename, audio_data)
                     size_kb = len(audio_data) / 1024
                     print(f"✅ Saved {label} chunk {chunk_index}: {filename.name} ({size_kb:.1f} KB)")

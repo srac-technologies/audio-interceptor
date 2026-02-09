@@ -82,8 +82,33 @@
       font-size: 0.9rem;
     }
 
-    .btn-stop-floating {
+    .btn-mute-toggle {
       margin-left: auto;
+      background: rgba(100, 150, 255, 0.2);
+      color: #6496ff;
+      border: 1px solid #6496ff;
+      padding: 8px 20px;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.2s;
+    }
+
+    .btn-mute-toggle:hover {
+      background: rgba(100, 150, 255, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .btn-mute-toggle.muted {
+      background: rgba(255, 71, 87, 0.2);
+      color: #ff4757;
+      border-color: #ff4757;
+    }
+
+    .btn-stop-floating {
+      margin-left: 10px;
       background: #ff4757;
       color: #fff;
       border: none;
@@ -474,6 +499,7 @@
     <div class="status-bar">
       <div class="status-indicator" id="statusIndicator"></div>
       <span id="statusText">待機中</span>
+      <button class="btn-mute-toggle" id="muteMicBtn" style="display: none;">🎤 マイクON</button>
       <button class="btn-stop-floating" id="stopBtnFloating" style="display: none;">⏹ 会議を終了</button>
     </div>
 
@@ -622,6 +648,7 @@
     let isRecording = false;
     let ws = null;
     let selectedTypeId = null;
+    let micMuted = false;
 
     const statusIndicator = document.getElementById('statusIndicator');
     const statusText = document.getElementById('statusText');
@@ -634,6 +661,7 @@
     const meetingTitle = document.getElementById('meetingTitle');
     const controlsDetails = document.getElementById('controlsDetails');
     const stopBtnFloating = document.getElementById('stopBtnFloating');
+    const muteMicBtn = document.getElementById('muteMicBtn');
 
     // WebSocket接続
     function connectWebSocket() {
@@ -660,6 +688,9 @@
               isRecording = false;
               updateStatus(false);
             }
+          } else if (message.type === 'mic_mute_status') {
+            micMuted = message.muted;
+            updateMuteButton();
           }
         } catch (e) {
           console.error('WebSocket message parse error:', e);
@@ -684,8 +715,12 @@
         transcribeCheckbox.disabled = true;
         // 記録開始時にコントロールを折りたたむ
         controlsDetails.open = false;
-        // フローティング停止ボタンを表示
+        // フローティングボタンを表示
+        muteMicBtn.style.display = 'block';
         stopBtnFloating.style.display = 'block';
+        // ミュート状態をリセット
+        micMuted = false;
+        updateMuteButton();
       } else {
         statusIndicator.classList.remove('active');
         statusText.textContent = '待機中';
@@ -694,8 +729,20 @@
         transcribeCheckbox.disabled = false;
         // 記録停止時にコントロールを開く
         controlsDetails.open = true;
-        // フローティング停止ボタンを非表示
+        // フローティングボタンを非表示
+        muteMicBtn.style.display = 'none';
         stopBtnFloating.style.display = 'none';
+      }
+    }
+
+    // ミュートボタンの表示更新
+    function updateMuteButton() {
+      if (micMuted) {
+        muteMicBtn.textContent = '🔇 マイクOFF';
+        muteMicBtn.classList.add('muted');
+      } else {
+        muteMicBtn.textContent = '🎤 マイクON';
+        muteMicBtn.classList.remove('muted');
       }
     }
 
@@ -785,6 +832,25 @@
 
     stopBtn.addEventListener('click', handleStopRecording);
     stopBtnFloating.addEventListener('click', handleStopRecording);
+
+    // マイクミュート切り替え
+    muteMicBtn.addEventListener('click', async () => {
+      try {
+        const newMutedState = !micMuted;
+        const response = await fetch('http://localhost:8000/recording/mute-mic', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({muted: newMutedState})
+        });
+        const result = await response.json();
+        if (result.success) {
+          micMuted = newMutedState;
+          updateMuteButton();
+        }
+      } catch (error) {
+        console.error('Failed to toggle mic mute:', error);
+      }
+    });
 
     // 会議種別ロード
     async function loadMeetingTypes() {

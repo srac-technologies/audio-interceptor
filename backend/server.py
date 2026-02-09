@@ -281,6 +281,26 @@ async def stop_recording(background_tasks: BackgroundTasks):
         print(f"❌ Stop failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/recording/mute-mic")
+async def mute_microphone(mute_request: dict):
+    """マイクのミュート/ミュート解除"""
+    if not state.recording or not state.interceptor:
+        return {"success": False, "message": "Not recording"}
+    
+    try:
+        muted = mute_request.get("muted", False)
+        state.interceptor.set_mic_mute(muted)
+        
+        # WebSocketで状態をブロードキャスト
+        await broadcast(json.dumps({
+            "type": "mic_mute_status",
+            "muted": muted
+        }))
+        
+        return {"success": True, "muted": muted}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.patch("/recording")
 async def update_recording(request: RecordingUpdateRequest):
     if not state.recording or not state.current_session_id:
