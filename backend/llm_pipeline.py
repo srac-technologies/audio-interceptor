@@ -121,16 +121,32 @@ class LLMPipeline:
         except Exception as e:
             logger.error(f"Error in advice generation: {e}")
 
-    async def generate_summary(self, transcripts: List[Dict], prompt_text: str = None) -> str:
-        """会議全体のサマリーを生成する"""
+    async def generate_summary(self, transcripts: List[Dict], start_time: str = None, prompt_text: str = None) -> str:
+        """会議全体のサマリーを生成する
+        
+        Args:
+            transcripts: 文字起こしのリスト
+            start_time: 会議開始日時（ISO形式）
+            prompt_text: カスタムプロンプト（省略時はデフォルト）
+        """
         if not self.client:
             return "OpenAI API Key not set"
             
         full_text = "\n".join([f"[{t['source']}]: {t['text']}" for t in transcripts])
         
-        default_prompt = """
+        # 日時情報をプロンプトに追加
+        date_info = ""
+        if start_time:
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                date_info = f"\n# 会議日時\n{dt.strftime('%Y年%m月%d日 %H:%M')} 開始\n"
+            except:
+                pass
+        
+        default_prompt = f"""
 以下の会議の議事録を作成してください。
-
+{date_info}
 # 要件
 - 重要な決定事項
 - 次のアクションアイテム

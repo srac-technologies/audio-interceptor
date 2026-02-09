@@ -128,7 +128,11 @@ async def process_session_end(session_id: int):
         # LLMPipelineの一時的なインスタンスを作成してサマリー生成
         # (現在のアクティブなパイプラインはクリーンアップされている可能性があるため)
         temp_pipeline = LLMPipeline()
-        summary_text = await temp_pipeline.generate_summary(transcripts, summary_prompt)
+        summary_text = await temp_pipeline.generate_summary(
+            transcripts=transcripts,
+            start_time=session.get('start_time'),
+            prompt_text=summary_prompt
+        )
         
         # DBに保存
         if summary_text:
@@ -140,6 +144,7 @@ async def process_session_end(session_id: int):
         save_dir=save_dir,
         session_title=session['title'] or f"Meeting_{session_id}",
         transcripts=transcripts,
+        start_time=session.get('start_time'),
         summary=summary_text,
         advices=advices
     )
@@ -393,6 +398,7 @@ async def download_docx(session_id: int):
     doc = file_manager.generate_docx(
         session_title=session['title'] or f"Meeting_{session_id}",
         transcripts=transcripts,
+        start_time=session.get('start_time'),
         summary=session.get('summary'), # DBにあれば
         advices=advices
     )

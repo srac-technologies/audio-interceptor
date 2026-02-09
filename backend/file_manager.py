@@ -7,22 +7,40 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def save_meeting_log(save_dir, session_title, transcripts, summary=None, advices=None):
-    """会議ログをMarkdownファイルとして保存"""
+def save_meeting_log(save_dir, session_title, transcripts, start_time=None, summary=None, advices=None):
+    """会議ログをMarkdownファイルとして保存
+    
+    Args:
+        save_dir: 保存先ディレクトリ
+        session_title: 会議タイトル
+        transcripts: 文字起こしデータ
+        start_time: 会議開始日時（ISO形式文字列）
+        summary: サマリーテキスト
+        advices: アドバイスリスト
+    """
     try:
         # ディレクトリ作成
         save_path = Path(save_dir)
         save_path.mkdir(parents=True, exist_ok=True)
         
+        # 日時情報を取得
+        if start_time:
+            try:
+                dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+            except:
+                dt = datetime.now()
+        else:
+            dt = datetime.now()
+        
         # ファイル名生成 (タイムスタンプ + タイトル)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = dt.strftime("%Y%m%d_%H%M%S")
         safe_title = "".join([c for c in session_title if c.isalnum() or c in (' ', '-', '_')]).strip()
         filename_base = f"{timestamp}_{safe_title}"
         md_file_path = save_path / f"{filename_base}.md"
         
         with open(md_file_path, 'w', encoding='utf-8') as f:
             f.write(f"# {session_title}\n\n")
-            f.write(f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n")
+            f.write(f"**Date:** {dt.strftime('%Y-%m-%d %H:%M')}\n\n")
             
             if summary:
                 f.write("## 📝 Summary\n\n")
@@ -57,13 +75,30 @@ def save_meeting_log(save_dir, session_title, transcripts, summary=None, advices
         logger.error(f"Failed to save markdown log: {e}")
         return None
 
-def generate_docx(session_title, transcripts, summary=None, advices=None):
-    """会議ログのDocxオブジェクトを生成"""
+def generate_docx(session_title, transcripts, start_time=None, summary=None, advices=None):
+    """会議ログのDocxオブジェクトを生成
+    
+    Args:
+        session_title: 会議タイトル
+        transcripts: 文字起こしデータ
+        start_time: 会議開始日時（ISO形式文字列）
+        summary: サマリーテキスト
+        advices: アドバイスリスト
+    """
     doc = Document()
+    
+    # 日時情報を取得
+    if start_time:
+        try:
+            dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+        except:
+            dt = datetime.now()
+    else:
+        dt = datetime.now()
     
     # タイトル
     doc.add_heading(session_title, 0)
-    doc.add_paragraph(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    doc.add_paragraph(f"Date: {dt.strftime('%Y-%m-%d %H:%M')}")
     
     # サマリー
     if summary:
