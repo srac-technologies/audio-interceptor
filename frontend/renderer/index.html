@@ -993,6 +993,21 @@
 
         let html = '';
         
+        // タイトルヘッダー（編集可能）
+        html += `
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                <h2 id="sessionTitleDisplay" style="flex: 1; margin: 0; cursor: pointer; color: #00ffaa;" title="クリックで編集">${data.session.title || 'Untitled'}</h2>
+                <button id="editTitleBtn" style="width: auto; padding: 6px 12px; background: rgba(100,150,255,0.2); color: #6496ff; border: 1px solid #6496ff; font-size: 0.85rem;">✏️ 編集</button>
+            </div>
+            <div id="titleEditForm" style="display: none; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                <input type="text" id="editTitleInput" style="width: 100%; padding: 8px; margin-bottom: 8px;" value="${data.session.title || ''}">
+                <div style="display: flex; gap: 8px;">
+                    <button id="saveTitleBtn" style="flex: 1; background: #48bb78; color: white;">💾 保存</button>
+                    <button id="cancelTitleBtn" style="flex: 1; background: #666; color: white;">❌ キャンセル</button>
+                </div>
+            </div>
+        `;
+        
         // サマリーがあれば表示
         if (data.session.summary) {
             html += `
@@ -1031,6 +1046,72 @@
         });
         
         content.innerHTML = html;
+        
+        // タイトル編集機能の初期化
+        const titleDisplay = document.getElementById('sessionTitleDisplay');
+        const editBtn = document.getElementById('editTitleBtn');
+        const editForm = document.getElementById('titleEditForm');
+        const editInput = document.getElementById('editTitleInput');
+        const saveBtn = document.getElementById('saveTitleBtn');
+        const cancelBtn = document.getElementById('cancelTitleBtn');
+        
+        function showEditMode() {
+            titleDisplay.parentElement.style.display = 'none';
+            editForm.style.display = 'block';
+            editInput.focus();
+            editInput.select();
+        }
+        
+        function hideEditMode() {
+            titleDisplay.parentElement.style.display = 'flex';
+            editForm.style.display = 'none';
+        }
+        
+        async function saveTitle() {
+            const newTitle = editInput.value.trim();
+            if (!newTitle) {
+                alert('タイトルを入力してください');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`http://localhost:8000/history/${sessionId}`, {
+                    method: 'PATCH',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({title: newTitle})
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    titleDisplay.textContent = newTitle;
+                    hideEditMode();
+                    // 左側のリストも更新
+                    renderHistoryList();
+                } else {
+                    alert('タイトル更新に失敗しました');
+                }
+            } catch (error) {
+                console.error('Failed to update title:', error);
+                alert('タイトル更新に失敗しました');
+            }
+        }
+        
+        // イベントリスナー
+        titleDisplay.addEventListener('click', showEditMode);
+        editBtn.addEventListener('click', showEditMode);
+        saveBtn.addEventListener('click', saveTitle);
+        cancelBtn.addEventListener('click', hideEditMode);
+        
+        // Enterで保存、Escapeでキャンセル
+        editInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveTitle();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                hideEditMode();
+            }
+        });
     }
 
     // --- 設定機能 ---

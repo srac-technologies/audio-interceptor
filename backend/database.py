@@ -260,6 +260,14 @@ def get_session_details(session_id: int) -> Dict[str, Any]:
         "advices": advices
     }
 
+def update_session_title(session_id: int, new_title: str):
+    """セッションのタイトルを更新"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE sessions SET title = ? WHERE id = ?', (new_title, session_id))
+    conn.commit()
+    conn.close()
+
 # --- Settings & Summary ---
 
 def get_settings() -> Dict[str, str]:

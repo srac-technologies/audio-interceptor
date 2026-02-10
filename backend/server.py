@@ -394,6 +394,16 @@ async def list_history():
 async def get_history_details(session_id: int):
     return database.get_session_details(session_id)
 
+@app.patch("/history/{session_id}")
+async def update_history(session_id: int, update_data: dict):
+    """履歴のタイトルなどを更新"""
+    try:
+        if 'title' in update_data:
+            database.update_session_title(session_id, update_data['title'])
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/history/{session_id}/download/docx")
 async def download_docx(session_id: int):
     """履歴のDocxダウンロード"""
