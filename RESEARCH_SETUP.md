@@ -28,6 +28,25 @@ pip install -r requirements.txt
 
 新しく追加された依存関係:
 - `aiohttp>=3.9.0` (Slack統合用)
+- `slack-sdk>=3.23.0` (Slack App統合)
+
+### 1.5. 環境変数の設定（リサーチソース）
+
+`.env`ファイルまたはシェルで設定：
+
+```bash
+# 必須
+export OPENAI_API_KEY="sk-..."
+
+# オプション（並列リサーチを使う場合）
+export BRAVE_API_KEY="BSA..."           # Brave Search API
+export LIMITLESS_API_KEY="..."          # Limitless API
+export OPENCLAW_GATEWAY_TOKEN="..."     # OpenClaw Gateway認証トークン
+```
+
+**APIキーの取得方法:**
+- **Brave Search**: https://brave.com/search/api/
+- **Limitless**: https://limitless.ai/api
 
 ### 2. 設定の追加
 
@@ -70,7 +89,28 @@ UPDATE app_settings SET value = 'true' WHERE key = 'research_enabled';
 UPDATE app_settings SET value = 'あなたのプロンプト' WHERE key = 'ner_prompt';
 ```
 
-### 4. Slack統合の設定（オプション）
+### 4. リサーチ方式の選択
+
+設定画面で「リサーチ方式」を選択できます：
+
+#### **LLMのみ**（デフォルト）
+- OpenAI APIのみ使用
+- 高速・シンプル
+- APIキー: OpenAI のみ
+
+#### **OpenClaw統合**
+- OpenClaw Gateway経由で並列リサーチ
+- LLM + OpenClawナレッジ + Brave Search（設定済みの場合）
+- APIキー: OpenAI + （Brave API Key）
+- 必要: OpenClaw Gateway起動
+
+#### **ハイブリッド**
+- 全ソースを並列実行
+- LLM + Brave + OpenClaw + Limitless + gog
+- 最も多くの情報を取得（遅延は最大2秒程度）
+- 各ソースのAPIキーが必要
+
+### 5. Slack統合の設定（オプション）
 
 #### 4.1 Slack Appの作成
 
@@ -225,16 +265,20 @@ self.buffer_size = 5  # 5発言ごと → 好きな数値に変更
 
 ### アーキテクチャ
 
+#### リサーチ方式: LLMのみ（デフォルト）
+
 ```
 音声インターセプト
   ↓
 文字起こし (Whisper)
   ↓
-バッファ蓄積 (5発言)
+バッファ蓄積 (2発言・スピーカーのみ)
   ↓
 NER実行 (GPT-4o-mini) ←── ner_prompt
   ↓
 エンティティ抽出
+  ↓
+キャッシュチェック（重複スキップ）
   ↓
 リサーチ実行 (GPT-4o-mini)
   ↓
@@ -243,6 +287,55 @@ NER実行 (GPT-4o-mini) ←── ner_prompt
   ├─ Slack → スレッド投稿
   └─ DB保存 (advices テーブル)
 ```
+
+#### リサーチ方式: OpenClaw統合 / ハイブリッド（並列実行）
+
+```
+音声インターセプト → 文字起こし → NER抽出
+  ↓
+エンティティ: "OpenAI"
+  ↓
+┌─────────────────────────────────────────────┐
+│   Research Orchestrator                     │
+│   - 複数ソースを並列実行                      │
+│   - 結果が届いた順に配信（ストリーミング）      │
+│   - 優先度・タイムアウト制御                   │
+└─────────────────────────────────────────────┘
+    ↓ (asyncio.gather - 並列実行)
+┌──────┬──────┬──────────┬──────────┬──────┐
+│ LLM  │Brave │OpenClaw  │Limitless │ gog  │
+│即答  │Search│Knowledge │   API    │ CLI  │
+│ 50ms │500ms │  300ms   │   1s     │  2s  │
+└──────┴──────┴──────────┴──────────┴──────┘
+    ↓ (結果が届いた順に配信)
+┌─────────────────────────────────────────────┐
+│   Progressive Result Delivery               │
+│   t=0.05s: LLM即答 → 即表示                  │
+│   t=0.3s:  OpenClawナレッジ → 追加           │
+│   t=0.5s:  Brave検索結果 → 追加              │
+│   t=1.0s:  Limitless文脈 → 追加              │
+│   t=2.0s:  gog CLI結果 → 追加                │
+└─────────────────────────────────────────────┘
+    ↓
+UI: リアルタイム更新（カード追加）
+Slack: スレッド内に順次投稿
+DB: 各ソースの結果を保存
+```
+
+### リサーチソース
+
+| ソース | 優先度 | タイムアウト | 内容 | 必要なもの |
+|--------|--------|-------------|------|-----------|
+| **LLM** | 1 | 5s | GPT-4o-miniの知識 | OpenAI API Key |
+| **Brave Search** | 2 | 3s | 最新のWeb検索結果 | Brave API Key |
+| **OpenClaw Knowledge** | 3 | 2s | ナレッジファイル検索 | OpenClaw Gateway |
+| **Limitless API** | 4 | 5s | 文脈・履歴情報 | Limitless API Key |
+| **gog CLI** | 5 | 10s | CLI検索結果 | gog インストール |
+
+**優先度の仕組み**:
+- 数値が小さいほど優先度が高い
+- 並列実行されるが、結果は届いた順に配信
+- 高速なソース（LLM）は即座に表示、遅いソース（gog）は後から追加
 
 ### データフロー
 
