@@ -615,6 +615,39 @@
               <label>サマリー生成用プロンプト</label>
               <textarea id="settingSummaryPrompt" style="height: 150px; font-family: monospace;"></textarea>
           </div>
+          
+          <hr style="margin: 20px 0; border: none; border-top: 1px solid rgba(255,255,255,0.1);">
+          
+          <!-- リサーチ機能設定 -->
+          <h3 style="margin-bottom: 15px; color: #00ffaa;">🔍 リサーチ機能</h3>
+          
+          <div class="form-group">
+              <label class="checkbox-group">
+                  <input type="checkbox" id="settingResearchEnabled">
+                  <span>リサーチ機能を有効化（文字起こし中にエンティティを抽出してリサーチ）</span>
+              </label>
+          </div>
+          
+          <div class="form-group">
+              <label>NER（固有名詞抽出）プロンプト</label>
+              <textarea id="settingNerPrompt" style="height: 100px; font-family: monospace;" placeholder="会話から固有名詞を抽出..."></textarea>
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ JSON形式で {"entities": [...]} を返すように指示してください</div>
+          </div>
+          
+          <h4 style="margin: 15px 0 10px; color: #6496ff;">Slack統合（オプション）</h4>
+          
+          <div class="form-group">
+              <label>Slack Bot Token</label>
+              <input type="password" id="settingSlackBotToken" placeholder="xoxb-...">
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ Slack Appの Bot User OAuth Token</div>
+          </div>
+          
+          <div class="form-group">
+              <label>Slack チャンネル</label>
+              <input type="text" id="settingSlackChannel" placeholder="#meeting-research または C01234567">
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ チャンネル名（#付き）またはチャンネルID</div>
+          </div>
+          
           <div style="margin-top: 20px; text-align: right;">
               <button id="saveSettingsBtn" style="background: #48bb78; color: white; width: auto; padding: 10px 30px;">設定を保存</button>
           </div>
@@ -1124,6 +1157,12 @@
         document.getElementById('settingSaveDir').value = s.save_dir || '';
         document.getElementById('settingCalendarId').value = s.calendar_id || 'primary';
         document.getElementById('settingSummaryPrompt').value = s.summary_prompt || '';
+        
+        // リサーチ機能設定
+        document.getElementById('settingResearchEnabled').checked = s.research_enabled === 'true';
+        document.getElementById('settingNerPrompt').value = s.ner_prompt || '';
+        document.getElementById('settingSlackBotToken').value = s.slack_bot_token || '';
+        document.getElementById('settingSlackChannel').value = s.slack_channel || '';
     }
 
     document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
@@ -1131,7 +1170,11 @@
             auto_summary_enabled: document.getElementById('settingAutoSummary').checked ? 'true' : 'false',
             save_dir: document.getElementById('settingSaveDir').value,
             calendar_id: document.getElementById('settingCalendarId').value,
-            summary_prompt: document.getElementById('settingSummaryPrompt').value
+            summary_prompt: document.getElementById('settingSummaryPrompt').value,
+            research_enabled: document.getElementById('settingResearchEnabled').checked ? 'true' : 'false',
+            ner_prompt: document.getElementById('settingNerPrompt').value,
+            slack_bot_token: document.getElementById('settingSlackBotToken').value,
+            slack_channel: document.getElementById('settingSlackChannel').value
         };
         
         await fetch('http://localhost:8000/settings', {
