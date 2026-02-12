@@ -40,9 +40,11 @@ class LLMPipeline:
         # バッファに追加
         entry = f"[{source}]: {text}"
         self.transcript_buffer.append(entry)
+        logger.debug(f"📝 バッファ蓄積: {len(self.transcript_buffer)}/{self.buffer_size}")
         
         # バッファがいっぱいになったらNER実行
         if len(self.transcript_buffer) >= self.buffer_size:
+            logger.info(f"✨ バッファ満タン（{self.buffer_size}発言）→ NER実行")
             context = "\n".join(self.transcript_buffer)
             self.transcript_buffer = []  # バッファをクリア
             
@@ -51,16 +53,21 @@ class LLMPipeline:
 
     async def extract_and_research(self, context: str):
         """NERでエンティティ抽出 → リサーチ実行"""
-        logger.info("Extracting entities from context...")
+        logger.info("=" * 60)
+        logger.info("🔍 NER実行開始")
+        logger.info(f"対象文言:\n{context}")
+        logger.info("-" * 60)
         
         # 1. NER実行
         entities = await self.extract_entities(context)
         
         if not entities:
-            logger.info("No entities extracted")
+            logger.info("❌ エンティティ抽出なし")
+            logger.info("=" * 60)
             return
         
-        logger.info(f"Extracted entities: {entities}")
+        logger.info(f"✅ 抽出されたエンティティ: {', '.join(entities)}")
+        logger.info("=" * 60)
         
         # 2. 各エンティティをリサーチ
         for entity in entities:
@@ -94,6 +101,8 @@ class LLMPipeline:
                 response_format={"type": "json_object"}
             )
             result = response.choices[0].message.content.strip()
+            logger.info(f"NER応答: {result}")
+            
             data = json.loads(result)
             entities = data.get("entities", [])
             
@@ -101,7 +110,7 @@ class LLMPipeline:
             return list(set(entities))
             
         except Exception as e:
-            logger.error(f"Error in entity extraction: {e}")
+            logger.error(f"❌ NERエラー: {e}")
             return []
     
     async def research_entity(self, entity: str):
@@ -111,7 +120,9 @@ class LLMPipeline:
         Args:
             entity: リサーチ対象のエンティティ
         """
-        logger.info(f"Researching: {entity}")
+        logger.info("")
+        logger.info("📚 リサーチ開始")
+        logger.info(f"対象: {entity}")
         
         research_prompt = f"""
 以下のトピックについて、簡潔に説明してください（200字以内）：
@@ -131,7 +142,8 @@ class LLMPipeline:
             )
             research_text = response.choices[0].message.content.strip()
             
-            logger.info(f"Research completed for: {entity}")
+            logger.info(f"結果:\n{research_text}")
+            logger.info("-" * 60)
             
             # コールバックで通知
             if self.on_research:
@@ -143,7 +155,8 @@ class LLMPipeline:
                 })
                 
         except Exception as e:
-            logger.error(f"Error in research: {e}")
+            logger.error(f"❌ リサーチエラー ({entity}): {e}")
+            logger.info("-" * 60)
 
     async def generate_summary(self, transcripts: List[Dict], start_time: str = None, prompt_text: str = None) -> str:
         """会議全体のサマリーを生成する
