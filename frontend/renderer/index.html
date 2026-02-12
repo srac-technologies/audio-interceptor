@@ -644,6 +644,14 @@
               <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ JSON形式で {"entities": [...]} を返すように指示してください</div>
           </div>
           
+          <h4 style="margin: 15px 0 10px; color: #6496ff;">OpenClaw統合（オプション）</h4>
+          
+          <div class="form-group">
+              <label>OpenClaw Workspace Path</label>
+              <input type="text" id="settingOpenClawWorkspace" placeholder="~/clawd/workspaces/experimentation">
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ inbox方式で使用するワークスペースパス</div>
+          </div>
+          
           <h4 style="margin: 15px 0 10px; color: #6496ff;">Slack統合（オプション）</h4>
           
           <div class="form-group">
@@ -1172,6 +1180,7 @@
         document.getElementById('settingResearchEnabled').checked = s.research_enabled === 'true';
         document.getElementById('settingResearchMethod').value = s.research_method || 'llm';
         document.getElementById('settingNerPrompt').value = s.ner_prompt || '';
+        document.getElementById('settingOpenClawWorkspace').value = s.openclaw_workspace_path || '~/clawd/workspaces/experimentation';
         document.getElementById('settingSlackBotToken').value = s.slack_bot_token || '';
         document.getElementById('settingSlackChannel').value = s.slack_channel || '';
     }
@@ -1185,6 +1194,7 @@
             research_enabled: document.getElementById('settingResearchEnabled').checked ? 'true' : 'false',
             research_method: document.getElementById('settingResearchMethod').value,
             ner_prompt: document.getElementById('settingNerPrompt').value,
+            openclaw_workspace_path: document.getElementById('settingOpenClawWorkspace').value,
             slack_bot_token: document.getElementById('settingSlackBotToken').value,
             slack_channel: document.getElementById('settingSlackChannel').value
         };

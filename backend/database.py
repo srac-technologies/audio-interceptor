@@ -97,7 +97,8 @@ def init_db():
         'research_enabled': 'false',
         'research_method': 'llm',  # llm, openclaw, hybrid
         'openclaw_gateway_url': 'http://localhost:18789',
-        'openclaw_gateway_token': ''
+        'openclaw_gateway_token': '',
+        'openclaw_workspace_path': '~/clawd/workspaces/experimentation'
     }
     
     for key, value in default_settings.items():

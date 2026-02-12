@@ -11,7 +11,8 @@ from research_orchestrator import (
     BraveSearchSource,
     OpenClawKnowledgeSource,
     LimitlessAPISource,
-    GogCLISource
+    GogCLISource,
+    OpenClawInboxSource
 )
 
 # ロガー設定
@@ -59,31 +60,34 @@ class LLMPipeline:
     def _init_orchestrator(self, settings: Dict) -> ResearchOrchestrator:
         """Research Orchestratorを初期化"""
         sources = []
+        method = self.research_method
         
         # 常にLLMソースを追加（即答用）
         sources.append(LLMSource(self.client))
+        logger.info("  ✅ LLM Source enabled (priority=1)")
         
-        # Brave Search
-        brave_api_key = os.environ.get("BRAVE_API_KEY")
-        if brave_api_key:
-            sources.append(BraveSearchSource(brave_api_key))
-            logger.info("  ✅ Brave Search enabled")
+        # research_methodに応じてソースを追加
+        if method in ["openclaw", "hybrid"]:
+            # OpenClaw Inbox（ナレッジ検索 + web_search）
+            workspace_path = settings.get('openclaw_workspace_path', '~/clawd/workspaces/experimentation')
+            sources.append(OpenClawInboxSource(workspace_path))
+            logger.info("  ✅ OpenClaw Inbox enabled (priority=3)")
         
-        # OpenClaw Knowledge
-        openclaw_url = settings.get('openclaw_gateway_url')
-        openclaw_token = settings.get('openclaw_gateway_token')
-        if openclaw_url:
-            sources.append(OpenClawKnowledgeSource(openclaw_url, openclaw_token))
-            logger.info("  ✅ OpenClaw Knowledge enabled")
-        
-        # Limitless API
-        limitless_api_key = os.environ.get("LIMITLESS_API_KEY")
-        if limitless_api_key:
-            sources.append(LimitlessAPISource(limitless_api_key))
-            logger.info("  ✅ Limitless API enabled")
-        
-        # gog CLI
-        # sources.append(GogCLISource())  # デフォルトでは無効
+        if method == "hybrid":
+            # Brave Search（直接API）
+            brave_api_key = os.environ.get("BRAVE_API_KEY")
+            if brave_api_key:
+                sources.append(BraveSearchSource(brave_api_key))
+                logger.info("  ✅ Brave Search enabled (priority=2)")
+            
+            # Limitless API
+            limitless_api_key = os.environ.get("LIMITLESS_API_KEY")
+            if limitless_api_key:
+                sources.append(LimitlessAPISource(limitless_api_key))
+                logger.info("  ✅ Limitless API enabled (priority=4)")
+            
+            # gog CLI（オプション）
+            # sources.append(GogCLISource())
         
         return ResearchOrchestrator(sources, on_result=self._on_orchestrator_result)
     
