@@ -44,8 +44,8 @@ pip install -r requirements.txt
 
 | キー | 説明 | 例 |
 |------|------|-----|
-| `slack_webhook_url` | Slack Incoming Webhook URL | `https://hooks.slack.com/services/...` |
-| `slack_channel` | 投稿先チャンネル（オプション） | `#meeting-research` |
+| `slack_bot_token` | Slack Bot Token | `xoxb-1234567890-...` |
+| `slack_channel` | 投稿先チャンネルID or 名前 | `#meeting-research` または `C01234567` |
 
 ### 3. リサーチ機能の有効化
 
@@ -72,23 +72,34 @@ UPDATE app_settings SET value = 'あなたのプロンプト' WHERE key = 'ner_p
 
 ### 4. Slack統合の設定（オプション）
 
-#### 4.1 Incoming Webhookの作成
+#### 4.1 Slack Appの作成
 
-1. Slackワークスペースにログイン
-2. [Incoming Webhooks](https://api.slack.com/messaging/webhooks) アプリを追加
-3. Webhook URLをコピー
+1. [Slack API](https://api.slack.com/apps) にアクセス
+2. "Create New App" → "From scratch"
+3. App名とワークスペースを選択
+4. "OAuth & Permissions" に移動
+5. "Bot Token Scopes" に以下を追加:
+   - `chat:write` (メッセージ投稿)
+   - `chat:write.public` (パブリックチャンネルへの投稿)
+6. "Install to Workspace" でインストール
+7. "Bot User OAuth Token" (`xoxb-...`) をコピー
 
 #### 4.2 設定の追加
 
 UIまたはSQLiteで以下を設定:
 
 ```sql
-UPDATE app_settings SET value = 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL' 
-WHERE key = 'slack_webhook_url';
+UPDATE app_settings SET value = 'xoxb-YOUR-BOT-TOKEN' 
+WHERE key = 'slack_bot_token';
 
 UPDATE app_settings SET value = '#your-channel' 
 WHERE key = 'slack_channel';
 ```
+
+**チャンネルIDの確認方法**:
+- Slackでチャンネルを開く → 右上の "..." → "View channel details"
+- 一番下にチャンネルIDが表示されます（例: `C01234567`）
+- チャンネル名（`#meeting-research`）でも可
 
 ## 使い方
 
@@ -185,20 +196,24 @@ self.buffer_size = 5  # 5発言ごと → 好きな数値に変更
 
 ### Slackに投稿されない
 
-1. **Webhook URLを確認**:
+1. **Bot Tokenとチャンネルを確認**:
    ```sql
-   SELECT * FROM app_settings WHERE key = 'slack_webhook_url';
+   SELECT * FROM app_settings WHERE key IN ('slack_bot_token', 'slack_channel');
    ```
 
-2. **手動テスト**:
+2. **Bot権限を確認**:
+   - Slack Appの "OAuth & Permissions" で `chat:write`, `chat:write.public` が追加されているか
+   - Botがチャンネルに招待されているか（`/invite @your-bot`）
+
+3. **手動テスト**:
    ```bash
-   curl -X POST \
-     -H 'Content-Type: application/json' \
-     -d '{"text":"テスト投稿"}' \
-     YOUR_WEBHOOK_URL
+   curl -X POST https://slack.com/api/chat.postMessage \
+     -H 'Content-Type: application/json; charset=utf-8' \
+     -H 'Authorization: Bearer YOUR_BOT_TOKEN' \
+     -d '{"channel":"#your-channel","text":"テスト投稿"}'
    ```
 
-3. **ログを確認**:
+4. **ログを確認**:
    バックエンドのログに `Slack thread created` または `Posted research result` が出力されているか確認
 
 ### UIに表示されない

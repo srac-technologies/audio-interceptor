@@ -92,7 +92,7 @@ def init_db():
         'save_dir': str(Path.home() / "Documents" / "MeetingLogs"),
         'calendar_id': 'primary',
         'ner_prompt': '会話から固有名詞（人名、企業名、製品名、技術名など）を抽出してください。\n\nJSON形式で以下のように出力してください：\n{"entities": ["entity1", "entity2", ...]}',
-        'slack_webhook_url': '',
+        'slack_bot_token': '',
         'slack_channel': '',
         'research_enabled': 'false'
     }

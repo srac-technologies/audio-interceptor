@@ -1,31 +1,31 @@
 """
-Slack統合モジュール
-リサーチ結果をSlackスレッドに投稿
+Slack App統合モジュール
+リサーチ結果をSlackスレッドに投稿（Slack Web API使用）
 """
 
 import os
 import logging
-import json
 from typing import Optional, Dict
-import asyncio
-import aiohttp
+from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
 
 logger = logging.getLogger("SlackService")
 
 class SlackService:
-    def __init__(self, webhook_url: str = None, channel: str = None):
+    def __init__(self, bot_token: str = None, channel: str = None):
         """
-        Slack統合サービス
+        Slack App統合サービス
         
         Args:
-            webhook_url: Slack Incoming Webhook URL
-            channel: 投稿先チャンネル（オプション、webhook URLで指定されていない場合）
+            bot_token: Slack Bot Token (xoxb-...)
+            channel: 投稿先チャンネルID or 名前（例: #meeting-research, C01234567）
         """
-        self.webhook_url = webhook_url
+        self.bot_token = bot_token
         self.channel = channel
+        self.client = WebClient(token=bot_token) if bot_token else None
         self.thread_ts: Optional[str] = None  # スレッドのタイムスタンプ
         
-    async def create_thread(self, session_title: str) -> bool:
+    def create_thread(self, session_title: str) -> bool:
         """
         新しいスレッドを作成（録音開始時）
         
@@ -35,14 +35,15 @@ class SlackService:
         Returns:
             成功したらTrue
         """
-        if not self.webhook_url:
-            logger.warning("Slack webhook URL not configured")
+        if not self.client or not self.channel:
+            logger.warning("Slack client not configured")
             return False
             
         try:
-            message = {
-                "text": f"🎙️ リサーチセッション開始: {session_title}",
-                "blocks": [
+            response = self.client.chat_postMessage(
+                channel=self.channel,
+                text=f"🎙️ リサーチセッション開始: {session_title}",
+                blocks=[
                     {
                         "type": "header",
                         "text": {
@@ -60,28 +61,21 @@ class SlackService:
                         ]
                     }
                 ]
-            }
+            )
             
-            if self.channel:
-                message["channel"] = self.channel
-                
-            async with aiohttp.ClientSession() as session:
-                async with session.post(self.webhook_url, json=message) as response:
-                    if response.status == 200:
-                        # Note: Incoming Webhookはthread_tsを返さないので、
-                        # メッセージIDベースのスレッディングは使えない
-                        # 代わりに、連続投稿でスレッド風に見せる
-                        logger.info("Slack thread initialized")
-                        return True
-                    else:
-                        logger.error(f"Slack API error: {response.status}")
-                        return False
+            # スレッドのタイムスタンプを保存
+            self.thread_ts = response['ts']
+            logger.info(f"Slack thread created: ts={self.thread_ts}")
+            return True
                         
+        except SlackApiError as e:
+            logger.error(f"Slack API error: {e.response['error']}")
+            return False
         except Exception as e:
             logger.error(f"Failed to create Slack thread: {e}")
             return False
     
-    async def post_research_result(self, entity: str, result: str) -> bool:
+    def post_research_result(self, entity: str, result: str) -> bool:
         """
         リサーチ結果をスレッドに投稿
         
@@ -92,14 +86,16 @@ class SlackService:
         Returns:
             成功したらTrue
         """
-        if not self.webhook_url:
-            logger.warning("Slack webhook URL not configured")
+        if not self.client or not self.channel or not self.thread_ts:
+            logger.warning("Slack client or thread not initialized")
             return False
             
         try:
-            message = {
-                "text": f"🔍 {entity}",
-                "blocks": [
+            self.client.chat_postMessage(
+                channel=self.channel,
+                thread_ts=self.thread_ts,  # スレッドに返信
+                text=f"🔍 {entity}",
+                blocks=[
                     {
                         "type": "section",
                         "text": {
@@ -108,20 +104,14 @@ class SlackService:
                         }
                     }
                 ]
-            }
+            )
             
-            if self.channel:
-                message["channel"] = self.channel
-                
-            async with aiohttp.ClientSession() as session:
-                async with session.post(self.webhook_url, json=message) as response:
-                    if response.status == 200:
-                        logger.info(f"Posted research result for: {entity}")
-                        return True
-                    else:
-                        logger.error(f"Slack API error: {response.status}")
-                        return False
+            logger.info(f"Posted research result for: {entity}")
+            return True
                         
+        except SlackApiError as e:
+            logger.error(f"Slack API error: {e.response['error']}")
+            return False
         except Exception as e:
             logger.error(f"Failed to post research result: {e}")
             return False

@@ -222,9 +222,11 @@ async def on_research_callback(research_data):
     # 2. WebSocketでUI配信
     await broadcast_research(research_data)
     
-    # 3. Slackに投稿
+    # 3. Slackに投稿（同期関数をスレッドで実行）
     if state.slack_service:
-        asyncio.create_task(state.slack_service.post_research_result(entity, text))
+        asyncio.create_task(
+            asyncio.to_thread(state.slack_service.post_research_result, entity, text)
+        )
 
 @app.post("/recording/start")
 async def start_recording(request: RecordingStartRequest):
@@ -264,20 +266,27 @@ async def start_recording(request: RecordingStartRequest):
                 state.llm_pipeline = LLMPipeline(on_research=on_research_callback)
                 
                 # Slackサービスの初期化
-                slack_webhook = settings.get('slack_webhook_url', '')
+                slack_bot_token = settings.get('slack_bot_token', '')
                 slack_channel = settings.get('slack_channel', '')
                 
-                if slack_webhook:
+                if slack_bot_token and slack_channel:
                     state.slack_service = SlackService(
-                        webhook_url=slack_webhook,
+                        bot_token=slack_bot_token,
                         channel=slack_channel
                     )
-                    # スレッド作成
-                    await state.slack_service.create_thread(session_title)
-                    print(f"📨 Slack thread created for: {session_title}")
+                    # スレッド作成（同期関数をスレッドで実行）
+                    success = await asyncio.to_thread(
+                        state.slack_service.create_thread, 
+                        session_title
+                    )
+                    if success:
+                        print(f"📨 Slack thread created for: {session_title}")
+                    else:
+                        print("⚠️  Failed to create Slack thread")
+                        state.slack_service = None
                 else:
                     state.slack_service = None
-                    print("⚠️  Slack webhook not configured")
+                    print("⚠️  Slack bot token or channel not configured")
             else:
                 state.llm_pipeline = None
                 state.slack_service = None
