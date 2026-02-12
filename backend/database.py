@@ -90,7 +90,11 @@ def init_db():
         'auto_summary_enabled': 'true',
         'summary_prompt': '以下の会議の議事録を作成してください。\n\n# 要件\n- 重要な決定事項\n- 次のアクションアイテム\n- 議論の要約\nをMarkdown形式でまとめてください。',
         'save_dir': str(Path.home() / "Documents" / "MeetingLogs"),
-        'calendar_id': 'primary'
+        'calendar_id': 'primary',
+        'ner_prompt': '会話から固有名詞（人名、企業名、製品名、技術名など）を抽出してください。\n\nJSON形式で以下のように出力してください：\n{"entities": ["entity1", "entity2", ...]}',
+        'slack_webhook_url': '',
+        'slack_channel': '',
+        'research_enabled': 'false'
     }
     
     for key, value in default_settings.items():

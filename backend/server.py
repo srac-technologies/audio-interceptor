@@ -38,6 +38,7 @@ import database
 from llm_pipeline import LLMPipeline
 from calendar_service import calendar_service
 import file_manager
+from slack_service import SlackService
 
 # グローバル状態
 class AppState:
@@ -46,6 +47,7 @@ class AppState:
         self.websocket_clients = set()
         self.interceptor: Optional[AudioInterceptor] = None
         self.llm_pipeline: Optional[LLMPipeline] = None
+        self.slack_service: Optional[SlackService] = None
         self.loop = None
         self.active_meeting_type_id: Optional[int] = None
         self.current_session_id: Optional[int] = None
@@ -201,17 +203,28 @@ def on_transcript_callback(source, text):
         if state.llm_pipeline:
             asyncio.run_coroutine_threadsafe(state.llm_pipeline.process_transcript(source, text), state.loop)
 
-async def on_advice_callback(advice_data):
+async def on_research_callback(research_data):
+    """リサーチ結果のコールバック（UI配信 + Slack投稿 + DB保存）"""
+    entity = research_data.get("entity", "")
+    text = research_data.get("text", "")
+    
+    # 1. DBに保存（advicesテーブルを再利用）
     if state.current_session_id:
         try:
             database.add_advice(
                 state.current_session_id, 
-                advice_data.get("trigger", ""), 
-                advice_data.get("text", "")
+                entity,  # trigger_condition → entity
+                text     # advice_text → research result
             )
         except Exception as e:
-            print(f"Failed to save advice: {e}")
-    await broadcast_advice(advice_data)
+            print(f"Failed to save research: {e}")
+    
+    # 2. WebSocketでUI配信
+    await broadcast_research(research_data)
+    
+    # 3. Slackに投稿
+    if state.slack_service:
+        asyncio.create_task(state.slack_service.post_research_result(entity, text))
 
 @app.post("/recording/start")
 async def start_recording(request: RecordingStartRequest):
@@ -240,14 +253,38 @@ async def start_recording(request: RecordingStartRequest):
             title=session_title
         )
         print(f"🆕 Session ID: {state.current_session_id}")
+        
+        # リサーチ機能の初期化
+        if request.transcribe_enabled:
+            settings = database.get_settings()
+            research_enabled = settings.get('research_enabled', 'false') == 'true'
             
-        if request.transcribe_enabled and state.active_meeting_type_id:
-            state.llm_pipeline = LLMPipeline(
-                meeting_type_id=state.active_meeting_type_id,
-                on_advice=on_advice_callback
-            )
+            if research_enabled:
+                # LLMパイプライン（リサーチ用）
+                state.llm_pipeline = LLMPipeline(on_research=on_research_callback)
+                
+                # Slackサービスの初期化
+                slack_webhook = settings.get('slack_webhook_url', '')
+                slack_channel = settings.get('slack_channel', '')
+                
+                if slack_webhook:
+                    state.slack_service = SlackService(
+                        webhook_url=slack_webhook,
+                        channel=slack_channel
+                    )
+                    # スレッド作成
+                    await state.slack_service.create_thread(session_title)
+                    print(f"📨 Slack thread created for: {session_title}")
+                else:
+                    state.slack_service = None
+                    print("⚠️  Slack webhook not configured")
+            else:
+                state.llm_pipeline = None
+                state.slack_service = None
+                print("ℹ️  Research feature disabled")
         else:
             state.llm_pipeline = None
+            state.slack_service = None
             
         state.interceptor = AudioInterceptor(
             tmp_dir=request.tmp_dir,
@@ -330,11 +367,7 @@ async def update_recording(request: RecordingUpdateRequest):
         if request.meeting_type_id is not None:
             cursor.execute('UPDATE sessions SET meeting_type_id = ? WHERE id = ?', (request.meeting_type_id, state.current_session_id))
             state.active_meeting_type_id = request.meeting_type_id
-            if state.llm_pipeline and request.meeting_type_id:
-                state.llm_pipeline = LLMPipeline(
-                    meeting_type_id=request.meeting_type_id,
-                    on_advice=on_advice_callback
-                )
+            # Note: リサーチ機能はmeeting_type_idに依存しないため、再初期化不要
         conn.commit()
         conn.close()
         return {"success": True}
@@ -446,9 +479,16 @@ async def broadcast_transcript(source: str, text: str):
     message = json.dumps({"type": "transcript", "source": source, "text": text})
     await broadcast(message)
 
-async def broadcast_advice(advice_data: dict):
-    if "type" not in advice_data: advice_data["type"] = "advice"
-    await broadcast(json.dumps(advice_data))
+async def broadcast_research(research_data: dict):
+    """リサーチ結果をWebSocketで配信（UI表示用）"""
+    # UIのadviceパネルを再利用するため、フォーマットを合わせる
+    ui_message = {
+        "type": "advice",  # UIは"advice"イベントを期待
+        "trigger": research_data.get("entity", ""),  # entity → trigger
+        "text": research_data.get("text", ""),
+        "timestamp": research_data.get("timestamp", "")
+    }
+    await broadcast(json.dumps(ui_message))
 
 async def broadcast(message: str):
     disconnected = set()

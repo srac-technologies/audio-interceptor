@@ -516,9 +516,9 @@
         </div>
 
         <div class="form-group">
-          <label>会議種別（AIアドバイス用）</label>
+          <label>会議種別</label>
           <select id="meetingTypeSelect">
-            <option value="">選択してください（アドバイスなし）</option>
+            <option value="">選択してください</option>
           </select>
         </div>
 
@@ -546,11 +546,11 @@
         </div>
       </div>
 
-      <!-- AIアドバイスパネル -->
+      <!-- AIリサーチパネル -->
       <div class="advice-panel">
-        <div class="panel-header">AI_ADVICE</div>
+        <div class="panel-header">AI_RESEARCH</div>
         <div class="advice-content" id="adviceArea">
-          <div class="empty-state">アドバイスがここに表示されます</div>
+          <div class="empty-state">リサーチ結果がここに表示されます</div>
         </div>
       </div>
     </div>
@@ -862,7 +862,7 @@
         const response = await fetch('http://localhost:8000/meeting-types');
         const data = await response.json();
         
-        meetingTypeSelect.innerHTML = '<option value="">選択してください（アドバイスなし）</option>';
+        meetingTypeSelect.innerHTML = '<option value="">選択してください</option>';
         data.meeting_types.forEach(type => {
           const option = document.createElement('option');
           option.value = type.id;

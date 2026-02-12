@@ -1,6 +1,7 @@
 import os
 import asyncio
 import logging
+import json
 from typing import List, Dict, Optional, Callable
 from openai import AsyncOpenAI
 import database
@@ -10,116 +11,139 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("LLM_Pipeline")
 
 class LLMPipeline:
-    def __init__(self, meeting_type_id: Optional[int] = None, on_advice: Optional[Callable] = None):
-        self.meeting_type_id = meeting_type_id
-        self.on_advice = on_advice
+    def __init__(self, on_research: Optional[Callable] = None):
+        """
+        LLMパイプライン（リサーチ機能）
+        
+        Args:
+            on_research: リサーチ結果のコールバック関数
+        """
+        self.on_research = on_research
         self.api_key = os.environ.get("OPENAI_API_KEY")
         self.client = AsyncOpenAI(api_key=self.api_key) if self.api_key else None
         
         self.transcript_buffer: List[str] = []
-        self.buffer_size = 5  # 判定を行う発言数の単位
+        self.buffer_size = 5  # NER実行を行う発言数の単位
         
-        # マスタデータからプロンプトをロード
-        self.prompts = []
-        if self.meeting_type_id:
-            self.prompts = database.get_prompts_for_type(self.meeting_type_id)
-            logger.info(f"Loaded {len(self.prompts)} prompts for meeting type {self.meeting_type_id}")
+        # 設定からNERプロンプトをロード
+        settings = database.get_settings()
+        self.ner_prompt = settings.get('ner_prompt', '')
+        self.research_enabled = settings.get('research_enabled', 'false') == 'true'
+        
+        logger.info(f"Research enabled: {self.research_enabled}")
 
     async def process_transcript(self, source: str, text: str):
-        """文字起こしテキストを処理する"""
-        if not self.client or not self.prompts:
+        """文字起こしテキストを処理する（リサーチ用）"""
+        if not self.client or not self.research_enabled:
             return
 
         # バッファに追加
         entry = f"[{source}]: {text}"
         self.transcript_buffer.append(entry)
         
-        # バッファがいっぱいになったら判定を実行
+        # バッファがいっぱいになったらNER実行
         if len(self.transcript_buffer) >= self.buffer_size:
             context = "\n".join(self.transcript_buffer)
-            self.transcript_buffer = []  # バッファをクリア（または一部残すスライディングウィンドウも検討可）
+            self.transcript_buffer = []  # バッファをクリア
             
-            # 非同期でアドバイス生成タスクを開始
-            asyncio.create_task(self.analyze_context(context))
+            # 非同期でNER + リサーチタスクを開始
+            asyncio.create_task(self.extract_and_research(context))
 
-    async def analyze_context(self, context: str):
-        """コンテキストを分析してアドバイスが必要か判定する"""
-        logger.info("Analyzing context for advice...")
+    async def extract_and_research(self, context: str):
+        """NERでエンティティ抽出 → リサーチ実行"""
+        logger.info("Extracting entities from context...")
         
-        for prompt_config in self.prompts:
-            trigger_condition = prompt_config['trigger_condition']
-            action_prompt = prompt_config['action_prompt']
+        # 1. NER実行
+        entities = await self.extract_entities(context)
+        
+        if not entities:
+            logger.info("No entities extracted")
+            return
+        
+        logger.info(f"Extracted entities: {entities}")
+        
+        # 2. 各エンティティをリサーチ
+        for entity in entities:
+            await self.research_entity(entity)
+    
+    async def extract_entities(self, context: str) -> List[str]:
+        """
+        NERでエンティティを抽出
+        
+        Args:
+            context: 会話履歴
             
-            # トリガー判定プロンプト
-            system_prompt = f"""
-あなたは会議のアシスタントAIです。
-以下の会話履歴が、指定された「トリガー条件」に合致するかどうかを判定してください。
-合致する場合は "YES"、合致しない場合は "NO" とだけ答えてください。
-
-# トリガー条件
-{trigger_condition}
-
-# 会話履歴
-{context}
-"""
-            try:
-                response = await self.client.chat.completions.create(
-                    model="gpt-4o-mini", # 高速・安価なモデルで判定
-                    messages=[{"role": "system", "content": system_prompt}],
-                    temperature=0.0
-                )
-                result = response.choices[0].message.content.strip().upper()
-                
-                if "YES" in result:
-                    logger.info(f"Trigger matched: {trigger_condition}")
-                    await self.generate_advice(context, action_prompt, trigger_condition)
-                    # 1回の分析で複数のアドバイスが出すぎないようにbreak（要件次第）
-                    break 
-                    
-            except Exception as e:
-                logger.error(f"Error in trigger analysis: {e}")
-
-    async def generate_advice(self, context: str, action_prompt: str, trigger_condition: str):
-        """アドバイスを生成する"""
+        Returns:
+            抽出されたエンティティのリスト
+        """
+        if not self.ner_prompt:
+            logger.warning("NER prompt not configured")
+            return []
+        
         system_prompt = f"""
-あなたはプロフェッショナルな会議アドバイザーです。
-会話履歴に基づき、ユーザーに対する具体的なアドバイスや切り返しトークを提案してください。
-
-# 状況
-{trigger_condition}
-
-# 指示
-{action_prompt}
-
-# 制約
-- アドバイスは簡潔かつ具体的に
-- 箇条書きで1〜3点
-- 丁寧なトーンで
+{self.ner_prompt}
 
 # 会話履歴
 {context}
 """
         try:
             response = await self.client.chat.completions.create(
-                model="gpt-4o", # 品質の高いモデルで生成
+                model="gpt-4o-mini",
                 messages=[{"role": "system", "content": system_prompt}],
-                temperature=0.7
+                temperature=0.0,
+                response_format={"type": "json_object"}
             )
-            advice_text = response.choices[0].message.content.strip()
+            result = response.choices[0].message.content.strip()
+            data = json.loads(result)
+            entities = data.get("entities", [])
             
-            logger.info(f"Advice generated: {advice_text[:50]}...")
+            # 重複を除去して返す
+            return list(set(entities))
+            
+        except Exception as e:
+            logger.error(f"Error in entity extraction: {e}")
+            return []
+    
+    async def research_entity(self, entity: str):
+        """
+        エンティティをリサーチ
+        
+        Args:
+            entity: リサーチ対象のエンティティ
+        """
+        logger.info(f"Researching: {entity}")
+        
+        research_prompt = f"""
+以下のトピックについて、簡潔に説明してください（200字以内）：
+
+{entity}
+
+# 制約
+- 最新の情報に基づいて説明
+- 専門用語は分かりやすく
+- 簡潔に要点のみ
+"""
+        try:
+            response = await self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "system", "content": research_prompt}],
+                temperature=0.3
+            )
+            research_text = response.choices[0].message.content.strip()
+            
+            logger.info(f"Research completed for: {entity}")
             
             # コールバックで通知
-            if self.on_advice:
-                await self.on_advice({
-                    "type": "advice",
-                    "trigger": trigger_condition,
-                    "text": advice_text,
+            if self.on_research:
+                await self.on_research({
+                    "type": "research",
+                    "entity": entity,
+                    "text": research_text,
                     "timestamp": datetime.now().isoformat()
                 })
                 
         except Exception as e:
-            logger.error(f"Error in advice generation: {e}")
+            logger.error(f"Error in research: {e}")
 
     async def generate_summary(self, transcripts: List[Dict], start_time: str = None, prompt_text: str = None) -> str:
         """会議全体のサマリーを生成する
