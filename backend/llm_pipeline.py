@@ -5,6 +5,14 @@ import json
 from typing import List, Dict, Optional, Callable
 from openai import AsyncOpenAI
 import database
+from research_orchestrator import (
+    ResearchOrchestrator,
+    LLMSource,
+    BraveSearchSource,
+    OpenClawKnowledgeSource,
+    LimitlessAPISource,
+    GogCLISource
+)
 
 # ロガー設定
 logging.basicConfig(level=logging.INFO)
@@ -35,11 +43,62 @@ class LLMPipeline:
         settings = database.get_settings()
         self.ner_prompt = settings.get('ner_prompt', '')
         self.research_enabled = settings.get('research_enabled', 'false') == 'true'
+        self.research_method = settings.get('research_method', 'llm')
+        
+        # Research Orchestratorの初期化
+        self.orchestrator = None
+        if self.research_enabled:
+            self.orchestrator = self._init_orchestrator(settings)
         
         logger.info(f"🔍 Research enabled: {self.research_enabled}")
         logger.info(f"📝 NER prompt configured: {bool(self.ner_prompt)}")
+        logger.info(f"🎯 Research method: {self.research_method}")
         logger.info(f"📊 Buffer size: {self.buffer_size}")
         logger.info(f"💾 Research cache initialized")
+    
+    def _init_orchestrator(self, settings: Dict) -> ResearchOrchestrator:
+        """Research Orchestratorを初期化"""
+        sources = []
+        
+        # 常にLLMソースを追加（即答用）
+        sources.append(LLMSource(self.client))
+        
+        # Brave Search
+        brave_api_key = os.environ.get("BRAVE_API_KEY")
+        if brave_api_key:
+            sources.append(BraveSearchSource(brave_api_key))
+            logger.info("  ✅ Brave Search enabled")
+        
+        # OpenClaw Knowledge
+        openclaw_url = settings.get('openclaw_gateway_url')
+        openclaw_token = settings.get('openclaw_gateway_token')
+        if openclaw_url:
+            sources.append(OpenClawKnowledgeSource(openclaw_url, openclaw_token))
+            logger.info("  ✅ OpenClaw Knowledge enabled")
+        
+        # Limitless API
+        limitless_api_key = os.environ.get("LIMITLESS_API_KEY")
+        if limitless_api_key:
+            sources.append(LimitlessAPISource(limitless_api_key))
+            logger.info("  ✅ Limitless API enabled")
+        
+        # gog CLI
+        # sources.append(GogCLISource())  # デフォルトでは無効
+        
+        return ResearchOrchestrator(sources, on_result=self._on_orchestrator_result)
+    
+    async def _on_orchestrator_result(self, result_data: Dict):
+        """Orchestratorからの結果を受信してコールバック"""
+        if result_data["type"] == "research_partial":
+            # 部分的な結果を配信
+            if self.on_research:
+                await self.on_research({
+                    "type": "research",
+                    "entity": result_data["entity"],
+                    "text": f"[{result_data['source']}] {result_data['content']}",
+                    "source": result_data["source"],
+                    "timestamp": result_data["timestamp"]
+                })
 
     async def process_transcript(self, source: str, text: str):
         """文字起こしテキストを処理する（リサーチ用）- スピーカーのみ対象"""
@@ -152,16 +211,21 @@ class LLMPipeline:
     
     async def research_entity(self, entity: str):
         """
-        エンティティをリサーチ
+        エンティティをリサーチ（Orchestrator経由で並列実行）
         
         Args:
             entity: リサーチ対象のエンティティ
         """
-        logger.info("")
-        logger.info("📚 リサーチ開始")
-        logger.info(f"対象: {entity}")
-        
-        research_prompt = f"""
+        if self.orchestrator:
+            # Orchestrator経由で並列リサーチ
+            await self.orchestrator.research(entity)
+        else:
+            # フォールバック: LLMのみ
+            logger.info("")
+            logger.info("📚 リサーチ開始（LLMのみ）")
+            logger.info(f"対象: {entity}")
+            
+            research_prompt = f"""
 以下のトピックについて、簡潔に説明してください（200字以内）：
 
 {entity}
@@ -171,29 +235,29 @@ class LLMPipeline:
 - 専門用語は分かりやすく
 - 簡潔に要点のみ
 """
-        try:
-            response = await self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "system", "content": research_prompt}],
-                temperature=0.3
-            )
-            research_text = response.choices[0].message.content.strip()
-            
-            logger.info(f"結果:\n{research_text}")
-            logger.info("-" * 60)
-            
-            # コールバックで通知
-            if self.on_research:
-                await self.on_research({
-                    "type": "research",
-                    "entity": entity,
-                    "text": research_text,
-                    "timestamp": datetime.now().isoformat()
-                })
+            try:
+                response = await self.client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "system", "content": research_prompt}],
+                    temperature=0.3
+                )
+                research_text = response.choices[0].message.content.strip()
                 
-        except Exception as e:
-            logger.error(f"❌ リサーチエラー ({entity}): {e}")
-            logger.info("-" * 60)
+                logger.info(f"結果:\n{research_text}")
+                logger.info("-" * 60)
+                
+                # コールバックで通知
+                if self.on_research:
+                    await self.on_research({
+                        "type": "research",
+                        "entity": entity,
+                        "text": research_text,
+                        "timestamp": datetime.now().isoformat()
+                    })
+                    
+            except Exception as e:
+                logger.error(f"❌ リサーチエラー ({entity}): {e}")
+                logger.info("-" * 60)
 
     async def generate_summary(self, transcripts: List[Dict], start_time: str = None, prompt_text: str = None) -> str:
         """会議全体のサマリーを生成する

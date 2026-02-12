@@ -629,6 +629,16 @@
           </div>
           
           <div class="form-group">
+              <label>リサーチ方式</label>
+              <select id="settingResearchMethod">
+                  <option value="llm">LLMのみ（高速）</option>
+                  <option value="openclaw">OpenClaw統合（並列リサーチ）</option>
+                  <option value="hybrid">ハイブリッド（全ソース並列実行）</option>
+              </select>
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ openclaw/hybridは複数ソースから段階的に結果を取得</div>
+          </div>
+          
+          <div class="form-group">
               <label>NER（固有名詞抽出）プロンプト</label>
               <textarea id="settingNerPrompt" style="height: 100px; font-family: monospace;" placeholder="会話から固有名詞を抽出..."></textarea>
               <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ JSON形式で {"entities": [...]} を返すように指示してください</div>
@@ -1160,6 +1170,7 @@
         
         // リサーチ機能設定
         document.getElementById('settingResearchEnabled').checked = s.research_enabled === 'true';
+        document.getElementById('settingResearchMethod').value = s.research_method || 'llm';
         document.getElementById('settingNerPrompt').value = s.ner_prompt || '';
         document.getElementById('settingSlackBotToken').value = s.slack_bot_token || '';
         document.getElementById('settingSlackChannel').value = s.slack_channel || '';
@@ -1172,6 +1183,7 @@
             calendar_id: document.getElementById('settingCalendarId').value,
             summary_prompt: document.getElementById('settingSummaryPrompt').value,
             research_enabled: document.getElementById('settingResearchEnabled').checked ? 'true' : 'false',
+            research_method: document.getElementById('settingResearchMethod').value,
             ner_prompt: document.getElementById('settingNerPrompt').value,
             slack_bot_token: document.getElementById('settingSlackBotToken').value,
             slack_channel: document.getElementById('settingSlackChannel').value

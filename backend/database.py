@@ -94,7 +94,10 @@ def init_db():
         'ner_prompt': '会話から固有名詞（人名、企業名、製品名、技術名など）を抽出してください。\n\nJSON形式で以下のように出力してください：\n{"entities": ["entity1", "entity2", ...]}',
         'slack_bot_token': '',
         'slack_channel': '',
-        'research_enabled': 'false'
+        'research_enabled': 'false',
+        'research_method': 'llm',  # llm, openclaw, hybrid
+        'openclaw_gateway_url': 'http://localhost:18789',
+        'openclaw_gateway_token': ''
     }
     
     for key, value in default_settings.items():
