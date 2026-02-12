@@ -201,10 +201,12 @@ def on_transcript_callback(source, text):
         asyncio.run_coroutine_threadsafe(broadcast_transcript(source, text), state.loop)
         
         if state.llm_pipeline:
-            print(f"🔄 Sending to LLM pipeline: [{source}] {text[:50]}...")
+            # スピーカーのみリサーチ対象
+            if source.lower() == "speaker":
+                print(f"🔊 [SPEAKER] Sending to LLM pipeline: {text[:50]}...")
+            else:
+                print(f"🎤 [MIC] Skipping: {text[:30]}...")
             asyncio.run_coroutine_threadsafe(state.llm_pipeline.process_transcript(source, text), state.loop)
-        else:
-            print(f"⚠️  No LLM pipeline (transcript: [{source}] {text[:50]}...)")
 
 async def on_research_callback(research_data):
     """リサーチ結果のコールバック（UI配信 + Slack投稿 + DB保存）"""

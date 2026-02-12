@@ -26,7 +26,7 @@ class LLMPipeline:
         logger.info(f"🤖 OpenAI Client initialized: {bool(self.client)}")
         
         self.transcript_buffer: List[str] = []
-        self.buffer_size = 5  # NER実行を行う発言数の単位
+        self.buffer_size = 2  # NER実行を行う発言数の単位（スピーカー発言のみカウント）
         
         # 設定からNERプロンプトをロード
         settings = database.get_settings()
@@ -38,7 +38,7 @@ class LLMPipeline:
         logger.info(f"📊 Buffer size: {self.buffer_size}")
 
     async def process_transcript(self, source: str, text: str):
-        """文字起こしテキストを処理する（リサーチ用）"""
+        """文字起こしテキストを処理する（リサーチ用）- スピーカーのみ対象"""
         if not self.client:
             logger.warning(f"⚠️  OpenAI client not initialized")
             return
@@ -46,11 +46,16 @@ class LLMPipeline:
         if not self.research_enabled:
             logger.warning(f"⚠️  Research not enabled (setting)")
             return
+        
+        # スピーカー（相手側）の発言のみ対象
+        if source.lower() != "speaker":
+            logger.debug(f"⏭️  Skipping non-speaker: [{source}] {text[:30]}...")
+            return
 
         # バッファに追加
         entry = f"[{source}]: {text}"
         self.transcript_buffer.append(entry)
-        logger.info(f"📝 バッファ蓄積: {len(self.transcript_buffer)}/{self.buffer_size}")
+        logger.info(f"🔊 スピーカー発言をバッファに追加: {len(self.transcript_buffer)}/{self.buffer_size}")
         
         # バッファがいっぱいになったらNER実行
         if len(self.transcript_buffer) >= self.buffer_size:
