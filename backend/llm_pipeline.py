@@ -28,6 +28,9 @@ class LLMPipeline:
         self.transcript_buffer: List[str] = []
         self.buffer_size = 2  # NER実行を行う発言数の単位（スピーカー発言のみカウント）
         
+        # リサーチ済みエンティティのキャッシュ（セッション内で重複防止）
+        self.researched_entities: set = set()
+        
         # 設定からNERプロンプトをロード
         settings = database.get_settings()
         self.ner_prompt = settings.get('ner_prompt', '')
@@ -36,6 +39,7 @@ class LLMPipeline:
         logger.info(f"🔍 Research enabled: {self.research_enabled}")
         logger.info(f"📝 NER prompt configured: {bool(self.ner_prompt)}")
         logger.info(f"📊 Buffer size: {self.buffer_size}")
+        logger.info(f"💾 Research cache initialized")
 
     async def process_transcript(self, source: str, text: str):
         """文字起こしテキストを処理する（リサーチ用）- スピーカーのみ対象"""
@@ -67,7 +71,7 @@ class LLMPipeline:
             asyncio.create_task(self.extract_and_research(context))
 
     async def extract_and_research(self, context: str):
-        """NERでエンティティ抽出 → リサーチ実行"""
+        """NERでエンティティ抽出 → リサーチ実行（重複スキップ）"""
         logger.info("=" * 60)
         logger.info("🔍 NER実行開始")
         logger.info(f"対象文言:\n{context}")
@@ -82,11 +86,29 @@ class LLMPipeline:
             return
         
         logger.info(f"✅ 抽出されたエンティティ: {', '.join(entities)}")
+        
+        # 2. 未リサーチのエンティティのみフィルタリング
+        new_entities = [e for e in entities if e not in self.researched_entities]
+        cached_entities = [e for e in entities if e in self.researched_entities]
+        
+        if cached_entities:
+            logger.info(f"💾 キャッシュ済み（スキップ）: {', '.join(cached_entities)}")
+        
+        if not new_entities:
+            logger.info("⏭️  全てリサーチ済み → スキップ")
+            logger.info("=" * 60)
+            return
+        
+        logger.info(f"🆕 新規リサーチ対象: {', '.join(new_entities)}")
         logger.info("=" * 60)
         
-        # 2. 各エンティティをリサーチ
-        for entity in entities:
+        # 3. 新規エンティティのみリサーチ
+        for entity in new_entities:
             await self.research_entity(entity)
+            # リサーチ完了後、キャッシュに追加
+            self.researched_entities.add(entity)
+        
+        logger.info(f"📊 キャッシュ状態: {len(self.researched_entities)}件のエンティティをリサーチ済み")
     
     async def extract_entities(self, context: str) -> List[str]:
         """

@@ -336,6 +336,15 @@ async def stop_recording(background_tasks: BackgroundTasks):
             state.interceptor.cleanup()
             state.interceptor = None
         
+        # LLMパイプラインとSlackサービスのクリーンアップ
+        if state.llm_pipeline:
+            cache_size = len(state.llm_pipeline.researched_entities)
+            print(f"💾 リサーチキャッシュをクリア（{cache_size}件）")
+            state.llm_pipeline = None
+        
+        if state.slack_service:
+            state.slack_service = None
+        
         session_id = state.current_session_id
         if session_id:
             database.end_session(session_id)
