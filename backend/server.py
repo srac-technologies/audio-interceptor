@@ -201,7 +201,10 @@ def on_transcript_callback(source, text):
         asyncio.run_coroutine_threadsafe(broadcast_transcript(source, text), state.loop)
         
         if state.llm_pipeline:
+            print(f"🔄 Sending to LLM pipeline: [{source}] {text[:50]}...")
             asyncio.run_coroutine_threadsafe(state.llm_pipeline.process_transcript(source, text), state.loop)
+        else:
+            print(f"⚠️  No LLM pipeline (transcript: [{source}] {text[:50]}...)")
 
 async def on_research_callback(research_data):
     """リサーチ結果のコールバック（UI配信 + Slack投稿 + DB保存）"""
@@ -257,13 +260,17 @@ async def start_recording(request: RecordingStartRequest):
         print(f"🆕 Session ID: {state.current_session_id}")
         
         # リサーチ機能の初期化
+        print(f"🔍 Transcribe enabled: {request.transcribe_enabled}")
+        
         if request.transcribe_enabled:
             settings = database.get_settings()
             research_enabled = settings.get('research_enabled', 'false') == 'true'
+            print(f"🔍 Research enabled (from DB): {research_enabled}")
             
             if research_enabled:
                 # LLMパイプライン（リサーチ用）
                 state.llm_pipeline = LLMPipeline(on_research=on_research_callback)
+                print(f"✅ LLM Pipeline initialized")
                 
                 # Slackサービスの初期化
                 slack_bot_token = settings.get('slack_bot_token', '')
@@ -294,6 +301,7 @@ async def start_recording(request: RecordingStartRequest):
         else:
             state.llm_pipeline = None
             state.slack_service = None
+            print("⚠️  Transcribe disabled, no LLM pipeline")
             
         state.interceptor = AudioInterceptor(
             tmp_dir=request.tmp_dir,

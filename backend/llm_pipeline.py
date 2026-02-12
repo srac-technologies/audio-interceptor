@@ -22,6 +22,9 @@ class LLMPipeline:
         self.api_key = os.environ.get("OPENAI_API_KEY")
         self.client = AsyncOpenAI(api_key=self.api_key) if self.api_key else None
         
+        logger.info(f"🔑 OpenAI API Key configured: {bool(self.api_key)}")
+        logger.info(f"🤖 OpenAI Client initialized: {bool(self.client)}")
+        
         self.transcript_buffer: List[str] = []
         self.buffer_size = 5  # NER実行を行う発言数の単位
         
@@ -30,17 +33,24 @@ class LLMPipeline:
         self.ner_prompt = settings.get('ner_prompt', '')
         self.research_enabled = settings.get('research_enabled', 'false') == 'true'
         
-        logger.info(f"Research enabled: {self.research_enabled}")
+        logger.info(f"🔍 Research enabled: {self.research_enabled}")
+        logger.info(f"📝 NER prompt configured: {bool(self.ner_prompt)}")
+        logger.info(f"📊 Buffer size: {self.buffer_size}")
 
     async def process_transcript(self, source: str, text: str):
         """文字起こしテキストを処理する（リサーチ用）"""
-        if not self.client or not self.research_enabled:
+        if not self.client:
+            logger.warning(f"⚠️  OpenAI client not initialized")
+            return
+        
+        if not self.research_enabled:
+            logger.warning(f"⚠️  Research not enabled (setting)")
             return
 
         # バッファに追加
         entry = f"[{source}]: {text}"
         self.transcript_buffer.append(entry)
-        logger.debug(f"📝 バッファ蓄積: {len(self.transcript_buffer)}/{self.buffer_size}")
+        logger.info(f"📝 バッファ蓄積: {len(self.transcript_buffer)}/{self.buffer_size}")
         
         # バッファがいっぱいになったらNER実行
         if len(self.transcript_buffer) >= self.buffer_size:
