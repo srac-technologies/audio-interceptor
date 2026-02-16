@@ -693,6 +693,10 @@
           <div style="margin-top: 20px; text-align: right;">
               <button id="saveSettingsBtn" style="background: #48bb78; color: white; width: auto; padding: 10px 30px;">設定を保存</button>
           </div>
+          
+          <div style="margin-top: 10px; font-size: 0.85rem; color: #888; text-align: right;">
+              ℹ️ リサーチ機能の設定は録音中でもリアルタイムで反映されます
+          </div>
       </div>
 
       <!-- 会議種別タブ -->
@@ -1234,7 +1238,7 @@
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({settings})
         });
-        alert('設定を保存しました');
+        alert('設定を保存しました！\n\nリサーチ機能の設定は録音中でも即座に反映されます。');
     });
 
     // 会議種別管理（簡易版）
