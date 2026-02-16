@@ -61,6 +61,57 @@ class LLMPipeline:
         logger.info(f"✨ Transcription refinement: {self.transcription_refinement}")
         logger.info(f"💾 Research cache initialized")
     
+    def _reload_settings(self):
+        """設定を動的に再読み込み（録音中の設定変更に対応）"""
+        settings = database.get_settings()
+        
+        # 変更検知用の古い値を保存
+        old_enabled = self.research_enabled
+        old_buffer_size = self.buffer_size
+        old_target_sources = self.target_sources
+        old_refinement = self.transcription_refinement
+        old_method = self.research_method
+        
+        # 設定を更新
+        self.research_enabled = settings.get('research_enabled', 'false') == 'true'
+        self.buffer_size = int(settings.get('research_buffer_size', '2'))
+        self.target_sources = settings.get('research_target_sources', 'speaker')
+        self.transcription_refinement = settings.get('research_transcription_refinement', 'false') == 'true'
+        self.ner_prompt = settings.get('ner_prompt', '')
+        self.research_method = settings.get('research_method', 'llm')
+        
+        # 変更があればログ出力
+        if old_enabled != self.research_enabled:
+            logger.info(f"🔄 Research enabled changed: {old_enabled} → {self.research_enabled}")
+            # 有効化された場合はOrchestratorを初期化
+            if self.research_enabled and not self.orchestrator:
+                self.orchestrator = self._init_orchestrator(settings)
+                logger.info("   ✅ Orchestrator initialized")
+        
+        if old_buffer_size != self.buffer_size:
+            logger.info(f"🔄 Buffer size changed: {old_buffer_size} → {self.buffer_size}")
+            # バッファサイズ変更時はバッファをクリア
+            if len(self.transcript_buffer) > 0:
+                logger.info(f"   🗑️  Clearing buffer ({len(self.transcript_buffer)} items)")
+                self.transcript_buffer = []
+        
+        if old_target_sources != self.target_sources:
+            logger.info(f"🔄 Target sources changed: {old_target_sources} → {self.target_sources}")
+            # 対象変更時もバッファをクリア
+            if len(self.transcript_buffer) > 0:
+                logger.info(f"   🗑️  Clearing buffer ({len(self.transcript_buffer)} items)")
+                self.transcript_buffer = []
+        
+        if old_refinement != self.transcription_refinement:
+            logger.info(f"🔄 Transcription refinement changed: {old_refinement} → {self.transcription_refinement}")
+        
+        if old_method != self.research_method:
+            logger.info(f"🔄 Research method changed: {old_method} → {self.research_method}")
+            # メソッド変更時はOrchestratorを再初期化
+            if self.research_enabled:
+                self.orchestrator = self._init_orchestrator(settings)
+                logger.info("   ✅ Orchestrator re-initialized")
+    
     def _init_orchestrator(self, settings: Dict) -> ResearchOrchestrator:
         """Research Orchestratorを初期化"""
         sources = []
@@ -114,8 +165,11 @@ class LLMPipeline:
             logger.warning(f"⚠️  OpenAI client not initialized")
             return
         
+        # 最新の設定を動的に読み込み（録音中の設定変更に対応）
+        self._reload_settings()
+        
         if not self.research_enabled:
-            logger.warning(f"⚠️  Research not enabled (setting)")
+            logger.debug(f"⏭️  Research disabled")
             return
         
         # ソース判定（target_sourcesの設定に基づく）
