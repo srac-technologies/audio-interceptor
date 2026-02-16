@@ -639,6 +639,30 @@
           </div>
           
           <div class="form-group">
+              <label>リサーチバッファサイズ</label>
+              <input type="number" id="settingResearchBufferSize" min="1" max="20" placeholder="2">
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ 何発言でNERを実行するか（デフォルト: 2）</div>
+          </div>
+          
+          <div class="form-group">
+              <label>リサーチ対象</label>
+              <select id="settingResearchTargetSources">
+                  <option value="speaker">スピーカーのみ（相手の発言）</option>
+                  <option value="mic">マイクのみ（自分の発言）</option>
+                  <option value="both">両方</option>
+              </select>
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ どの音源をリサーチバッファに含めるか</div>
+          </div>
+          
+          <div class="form-group">
+              <label class="checkbox-group">
+                  <input type="checkbox" id="settingResearchRefinement">
+                  <span>文字起こし精度向上（NER前にLLMで修正）</span>
+              </label>
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ 誤変換修正、固有名詞の正確化など（処理時間+1-2秒）</div>
+          </div>
+          
+          <div class="form-group">
               <label>NER（固有名詞抽出）プロンプト</label>
               <textarea id="settingNerPrompt" style="height: 100px; font-family: monospace;" placeholder="会話から固有名詞を抽出..."></textarea>
               <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ JSON形式で {"entities": [...]} を返すように指示してください</div>
@@ -1179,6 +1203,9 @@
         // リサーチ機能設定
         document.getElementById('settingResearchEnabled').checked = s.research_enabled === 'true';
         document.getElementById('settingResearchMethod').value = s.research_method || 'llm';
+        document.getElementById('settingResearchBufferSize').value = s.research_buffer_size || '2';
+        document.getElementById('settingResearchTargetSources').value = s.research_target_sources || 'speaker';
+        document.getElementById('settingResearchRefinement').checked = s.research_transcription_refinement === 'true';
         document.getElementById('settingNerPrompt').value = s.ner_prompt || '';
         document.getElementById('settingOpenClawWorkspace').value = s.openclaw_workspace_path || '~/clawd/workspaces/experimentation';
         document.getElementById('settingSlackBotToken').value = s.slack_bot_token || '';
@@ -1193,6 +1220,9 @@
             summary_prompt: document.getElementById('settingSummaryPrompt').value,
             research_enabled: document.getElementById('settingResearchEnabled').checked ? 'true' : 'false',
             research_method: document.getElementById('settingResearchMethod').value,
+            research_buffer_size: document.getElementById('settingResearchBufferSize').value,
+            research_target_sources: document.getElementById('settingResearchTargetSources').value,
+            research_transcription_refinement: document.getElementById('settingResearchRefinement').checked ? 'true' : 'false',
             ner_prompt: document.getElementById('settingNerPrompt').value,
             openclaw_workspace_path: document.getElementById('settingOpenClawWorkspace').value,
             slack_bot_token: document.getElementById('settingSlackBotToken').value,

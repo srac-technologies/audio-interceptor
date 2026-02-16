@@ -35,16 +35,18 @@ class LLMPipeline:
         logger.info(f"🤖 OpenAI Client initialized: {bool(self.client)}")
         
         self.transcript_buffer: List[str] = []
-        self.buffer_size = 2  # NER実行を行う発言数の単位（スピーカー発言のみカウント）
         
         # リサーチ済みエンティティのキャッシュ（セッション内で重複防止）
         self.researched_entities: set = set()
         
-        # 設定からNERプロンプトをロード
+        # 設定からリサーチ設定をロード
         settings = database.get_settings()
         self.ner_prompt = settings.get('ner_prompt', '')
         self.research_enabled = settings.get('research_enabled', 'false') == 'true'
         self.research_method = settings.get('research_method', 'llm')
+        self.buffer_size = int(settings.get('research_buffer_size', '2'))
+        self.target_sources = settings.get('research_target_sources', 'speaker')  # speaker, mic, both
+        self.transcription_refinement = settings.get('research_transcription_refinement', 'false') == 'true'
         
         # Research Orchestratorの初期化
         self.orchestrator = None
@@ -54,7 +56,9 @@ class LLMPipeline:
         logger.info(f"🔍 Research enabled: {self.research_enabled}")
         logger.info(f"📝 NER prompt configured: {bool(self.ner_prompt)}")
         logger.info(f"🎯 Research method: {self.research_method}")
-        logger.info(f"📊 Buffer size: {self.buffer_size}")
+        logger.info(f"📊 Buffer size: {self.buffer_size} 発言")
+        logger.info(f"🎙️  Target sources: {self.target_sources}")
+        logger.info(f"✨ Transcription refinement: {self.transcription_refinement}")
         logger.info(f"💾 Research cache initialized")
     
     def _init_orchestrator(self, settings: Dict) -> ResearchOrchestrator:
@@ -105,7 +109,7 @@ class LLMPipeline:
                 })
 
     async def process_transcript(self, source: str, text: str):
-        """文字起こしテキストを処理する（リサーチ用）- スピーカーのみ対象"""
+        """文字起こしテキストを処理する（リサーチ用）"""
         if not self.client:
             logger.warning(f"⚠️  OpenAI client not initialized")
             return
@@ -114,15 +118,27 @@ class LLMPipeline:
             logger.warning(f"⚠️  Research not enabled (setting)")
             return
         
-        # スピーカー（相手側）の発言のみ対象
-        if source.lower() != "speaker":
-            logger.debug(f"⏭️  Skipping non-speaker: [{source}] {text[:30]}...")
+        # ソース判定（target_sourcesの設定に基づく）
+        source_lower = source.lower()
+        should_process = False
+        
+        if self.target_sources == "speaker" and source_lower == "speaker":
+            should_process = True
+        elif self.target_sources == "mic" and source_lower == "mic":
+            should_process = True
+        elif self.target_sources == "both":
+            should_process = True
+        
+        if not should_process:
+            logger.debug(f"⏭️  Skipping [{source}] (target: {self.target_sources})")
             return
 
         # バッファに追加
         entry = f"[{source}]: {text}"
         self.transcript_buffer.append(entry)
-        logger.info(f"🔊 スピーカー発言をバッファに追加: {len(self.transcript_buffer)}/{self.buffer_size}")
+        
+        icon = "🔊" if source_lower == "speaker" else "🎤"
+        logger.info(f"{icon} [{source}] バッファに追加: {len(self.transcript_buffer)}/{self.buffer_size}")
         
         # バッファがいっぱいになったらNER実行
         if len(self.transcript_buffer) >= self.buffer_size:
@@ -137,8 +153,14 @@ class LLMPipeline:
         """NERでエンティティ抽出 → リサーチ実行（重複スキップ）"""
         logger.info("=" * 60)
         logger.info("🔍 NER実行開始")
-        logger.info(f"対象文言:\n{context}")
+        logger.info(f"対象文言（元）:\n{context}")
         logger.info("-" * 60)
+        
+        # 0. 文字起こし精度向上（オプション）
+        if self.transcription_refinement:
+            context = await self.refine_transcription(context)
+            logger.info(f"対象文言（精度向上後）:\n{context}")
+            logger.info("-" * 60)
         
         # 1. NER実行
         entities = await self.extract_entities(context)
@@ -172,6 +194,48 @@ class LLMPipeline:
             self.researched_entities.add(entity)
         
         logger.info(f"📊 キャッシュ状態: {len(self.researched_entities)}件のエンティティをリサーチ済み")
+    
+    async def refine_transcription(self, context: str) -> str:
+        """
+        文字起こしの精度向上（LLMで修正）
+        
+        Args:
+            context: 元の文字起こしテキスト
+            
+        Returns:
+            精度向上後のテキスト
+        """
+        logger.info("✨ 文字起こし精度向上を実行中...")
+        
+        refinement_prompt = """
+以下の音声文字起こしテキストを、より正確で読みやすい形に修正してください。
+
+# 修正方針
+- 誤変換を修正（例: 「人工無能」→「人工知能」）
+- 句読点を適切に追加
+- 固有名詞を正しい表記に修正（企業名、製品名、人名など）
+- 発話の意図を保ちつつ、自然な日本語に整形
+- 形式は元のまま維持（[source]: text）
+
+# 元のテキスト
+{context}
+
+# 修正後のテキスト（形式を維持）
+"""
+        
+        try:
+            response = await self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "system", "content": refinement_prompt.format(context=context)}],
+                temperature=0.1
+            )
+            refined = response.choices[0].message.content.strip()
+            logger.info("✅ 文字起こし精度向上完了")
+            return refined
+            
+        except Exception as e:
+            logger.error(f"❌ 文字起こし精度向上エラー: {e}")
+            return context  # エラー時は元のテキストを返す
     
     async def extract_entities(self, context: str) -> List[str]:
         """
