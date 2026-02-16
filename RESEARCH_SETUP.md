@@ -17,6 +17,32 @@
 - 旧「AIアドバイス」機能は削除されました
 - DBテーブル`advices`はリサーチ結果の保存に再利用されます
 
+## 💡 重要: 録音中の設定変更
+
+**リサーチ機能の設定は録音中でもリアルタイムで反映されます！**
+
+録音を停止する必要はありません：
+- リサーチON/OFF
+- バッファサイズ変更
+- 対象ソース変更（speaker/mic/both）
+- 文字起こし精度向上のON/OFF
+- リサーチ方式変更（llm/openclaw/hybrid）
+
+**仕組み:**
+- 各文字起こしのたびに設定を再読み込み
+- バッファサイズや対象変更時は自動的にバッファクリア
+- リサーチ方式変更時はOrchestratorを再初期化
+
+**ログ出力例:**
+```
+🔄 Buffer size changed: 2 → 3
+   🗑️  Clearing buffer (1 items)
+🔄 Research method changed: llm → openclaw
+   ✅ Orchestrator re-initialized
+```
+
+---
+
 ## セットアップ手順
 
 ### 1. 依存関係のインストール
