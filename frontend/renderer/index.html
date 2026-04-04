@@ -513,6 +513,11 @@
             <input type="text" id="meetingTitle" placeholder="例: 週次定例、営業商談、採用面接..." style="flex: 1;">
             <button id="fetchCalendarBtn" style="width: auto; padding: 8px 12px; font-size: 0.85rem; background: rgba(100, 150, 255, 0.2); color: #6496ff; border: 1px solid #6496ff;">📅 カレンダー</button>
           </div>
+          <div id="calendarSwitcher" style="display: none; margin-top: 6px; align-items: center; gap: 8px;">
+            <button id="calPrevBtn" style="width: 28px; height: 28px; padding: 0; font-size: 0.9rem; background: rgba(100, 150, 255, 0.15); color: #6496ff; border: 1px solid #6496ff; border-radius: 4px; cursor: pointer;">&lt;</button>
+            <span id="calIndicator" style="font-size: 0.8rem; color: #888; min-width: 32px; text-align: center;">1/1</span>
+            <button id="calNextBtn" style="width: 28px; height: 28px; padding: 0; font-size: 0.9rem; background: rgba(100, 150, 255, 0.15); color: #6496ff; border: 1px solid #6496ff; border-radius: 4px; cursor: pointer;">&gt;</button>
+          </div>
         </div>
 
         <div class="form-group">
@@ -722,6 +727,8 @@
     let ws = null;
     let selectedTypeId = null;
     let micMuted = false;
+    let calendarCandidates = [];
+    let calendarCurrentIndex = 0;
 
     const statusIndicator = document.getElementById('statusIndicator');
     const statusText = document.getElementById('statusText');
@@ -945,21 +952,54 @@
       }
     }
 
+    // カレンダー候補の切り替えUI更新
+    function updateCalendarSwitcher() {
+      const switcher = document.getElementById('calendarSwitcher');
+      const indicator = document.getElementById('calIndicator');
+
+      if (calendarCandidates.length > 1) {
+        switcher.style.display = 'flex';
+        indicator.textContent = `${calendarCurrentIndex + 1}/${calendarCandidates.length}`;
+      } else {
+        switcher.style.display = 'none';
+      }
+    }
+
+    // カレンダー候補を選択してタイトル欄に反映
+    function selectCalendarCandidate(index) {
+      if (calendarCandidates.length === 0) return;
+      calendarCurrentIndex = ((index % calendarCandidates.length) + calendarCandidates.length) % calendarCandidates.length;
+      meetingTitle.value = calendarCandidates[calendarCurrentIndex].summary;
+      updateCalendarSwitcher();
+    }
+
+    // カレンダー候補を取得する共通関数
+    async function fetchCalendarCandidates() {
+      const response = await fetch('http://localhost:8000/calendar/events');
+      const data = await response.json();
+
+      if (data.success && data.events && data.events.length > 0) {
+        calendarCandidates = data.events;
+        calendarCurrentIndex = 0;
+        return true;
+      }
+      calendarCandidates = [];
+      calendarCurrentIndex = 0;
+      return false;
+    }
+
     // カレンダーから自動的にタイトルを取得（タイトル欄が空の場合のみ）
     async function autoFetchCalendarTitle() {
-      if (meetingTitle.value) return; // すでに入力済みならスキップ
-      
+      if (meetingTitle.value) return;
+
       try {
-        const response = await fetch('http://localhost:8000/calendar/current');
-        const data = await response.json();
-        
-        if (data.success && data.event && !meetingTitle.value) {
-          meetingTitle.value = data.event.summary;
-          meetingTitle.style.borderColor = '#00ffaa'; // 緑枠で視覚的に通知
-          setTimeout(() => {
-            meetingTitle.style.borderColor = '';
-          }, 2000);
-          console.log('📅 Auto-filled title from calendar:', data.event.summary);
+        const found = await fetchCalendarCandidates();
+        if (found && !meetingTitle.value) {
+          meetingTitle.value = calendarCandidates[0].summary;
+          meetingTitle.style.borderColor = '#00ffaa';
+          setTimeout(() => { meetingTitle.style.borderColor = ''; }, 2000);
+          updateCalendarSwitcher();
+          console.log('📅 Auto-filled title from calendar:', calendarCandidates[0].summary);
         }
       } catch (error) {
         console.error('Auto-fetch calendar failed:', error);
@@ -970,31 +1010,37 @@
     document.getElementById('fetchCalendarBtn').addEventListener('click', async () => {
       const btn = document.getElementById('fetchCalendarBtn');
       const originalText = btn.textContent;
-      
+
       try {
         btn.textContent = '⏳ 取得中...';
         btn.disabled = true;
-        
-        const response = await fetch('http://localhost:8000/calendar/current');
-        const data = await response.json();
-        
-        if (data.success && data.event) {
-          meetingTitle.value = data.event.summary;
+
+        const found = await fetchCalendarCandidates();
+        if (found) {
+          selectCalendarCandidate(0);
+          updateCalendarSwitcher();
           btn.textContent = '✅ 取得完了';
-          setTimeout(() => {
-            btn.textContent = originalText;
-          }, 2000);
+          setTimeout(() => { btn.textContent = originalText; }, 2000);
         } else {
           alert('現在時刻付近にカレンダーイベントが見つかりませんでした');
           btn.textContent = originalText;
+          updateCalendarSwitcher();
         }
       } catch (error) {
-        console.error('Failed to fetch calendar event:', error);
+        console.error('Failed to fetch calendar events:', error);
         alert('カレンダー取得に失敗しました');
         btn.textContent = originalText;
       } finally {
         btn.disabled = false;
       }
+    });
+
+    // 切り替えボタン
+    document.getElementById('calPrevBtn').addEventListener('click', () => {
+      selectCalendarCandidate(calendarCurrentIndex - 1);
+    });
+    document.getElementById('calNextBtn').addEventListener('click', () => {
+      selectCalendarCandidate(calendarCurrentIndex + 1);
     });
 
     // --- モーダル制御 ---
