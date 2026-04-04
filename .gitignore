@@ -7,3 +7,4 @@ build/
 *.pyc
 venv/
 node_modules/
+creds.json
