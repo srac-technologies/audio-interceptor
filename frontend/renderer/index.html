@@ -592,6 +592,7 @@
       <div class="tabs">
           <div class="tab active" data-tab="general">一般設定</div>
           <div class="tab" data-tab="meeting-types">会議種別・プロンプト</div>
+          <div class="tab" data-tab="plugins">プラグイン</div>
       </div>
 
       <!-- 一般設定タブ -->
@@ -710,6 +711,55 @@
                 <button id="addPromptBtn">追加</button>
               </div>
             </div>
+          </div>
+      </div>
+
+      <!-- プラグインタブ -->
+      <div id="tab-plugins" class="tab-content">
+          <div style="margin-bottom: 15px;">
+              <p style="font-size: 0.85rem; color: #888; margin-bottom: 10px;">
+                  外部プログラムがMeeting Assistantのイベント（文字起こし、リサーチ結果等）を購読できます。
+              </p>
+          </div>
+
+          <div id="pluginList" style="flex: 1; overflow-y: auto; margin-bottom: 15px;"></div>
+
+          <hr style="margin: 15px 0; border: none; border-top: 1px solid rgba(255,255,255,0.1);">
+
+          <h4 style="margin-bottom: 10px; color: #00ffaa;">プラグイン追加</h4>
+          <div class="form-group">
+              <label>名前</label>
+              <input type="text" id="pluginName" placeholder="my-plugin">
+          </div>
+          <div class="form-group">
+              <label>プロトコル</label>
+              <select id="pluginProtocol">
+                  <option value="websocket">WebSocket（外部プロセスが /ws/plugins に接続）</option>
+                  <option value="webhook">HTTP Webhook（URLにPOST）</option>
+                  <option value="pipe">Shell Pipe（プロセスのstdinにJSON Lines）</option>
+                  <option value="exec">プロセス起動（イベント毎にコマンド実行）</option>
+              </select>
+          </div>
+          <div class="form-group" id="pluginEndpointGroup">
+              <label>エンドポイント / コマンド</label>
+              <input type="text" id="pluginEndpoint" placeholder="http://localhost:9999/webhook or /path/to/command">
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;" id="pluginEndpointHint">
+                  WebSocketプロトコルの場合、外部プロセスが ws://localhost:8000/ws/plugins に接続します
+              </div>
+          </div>
+          <div class="form-group">
+              <label>購読イベント（空欄で全イベント）</label>
+              <div id="pluginEventCheckboxes" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 5px;">
+                  <label class="checkbox-group" style="flex: 0 0 auto;"><input type="checkbox" value="transcription"><span>transcription</span></label>
+                  <label class="checkbox-group" style="flex: 0 0 auto;"><input type="checkbox" value="research_result"><span>research_result</span></label>
+                  <label class="checkbox-group" style="flex: 0 0 auto;"><input type="checkbox" value="session_start"><span>session_start</span></label>
+                  <label class="checkbox-group" style="flex: 0 0 auto;"><input type="checkbox" value="session_end"><span>session_end</span></label>
+                  <label class="checkbox-group" style="flex: 0 0 auto;"><input type="checkbox" value="meeting_detected"><span>meeting_detected</span></label>
+                  <label class="checkbox-group" style="flex: 0 0 auto;"><input type="checkbox" value="summary_generated"><span>summary_generated</span></label>
+              </div>
+          </div>
+          <div style="text-align: right;">
+              <button id="addPluginBtn" style="background: #48bb78; color: white; width: auto; padding: 10px 30px;">追加</button>
           </div>
       </div>
     </div>
@@ -1330,6 +1380,109 @@
         document.getElementById('newTrigger').value = '';
         document.getElementById('newAction').value = '';
         selectType({id: selectedTypeId, name: document.getElementById('promptsHeader').textContent.split(' ')[0]});
+    });
+
+    // --- プラグイン機能 ---
+
+    async function loadPlugins() {
+        try {
+            const res = await fetch('http://localhost:8000/plugins');
+            const data = await res.json();
+            renderPluginList(data.plugins || []);
+        } catch (e) {
+            console.error('Failed to load plugins:', e);
+        }
+    }
+
+    function renderPluginList(plugins) {
+        const container = document.getElementById('pluginList');
+        if (plugins.length === 0) {
+            container.innerHTML = '<div style="color: #666; padding: 20px; text-align: center;">登録済みプラグインはありません</div>';
+            return;
+        }
+        container.innerHTML = plugins.map(p => {
+            const statusColor = p.enabled ? '#48bb78' : '#666';
+            const statusLabel = p.enabled ? 'ON' : 'OFF';
+            const eventsLabel = p.events.length === 0 ? '全イベント' : p.events.join(', ');
+            return `
+                <div style="display: flex; align-items: center; gap: 10px; padding: 10px; margin-bottom: 8px; background: rgba(20,25,30,0.6); border: 1px solid rgba(255,255,255,0.05); border-radius: 4px;">
+                    <div style="flex: 1;">
+                        <div style="font-weight: 500; color: #e0e0e0;">${p.name}</div>
+                        <div style="font-size: 0.8rem; color: #888; margin-top: 2px;">${p.protocol}${p.endpoint ? ' → ' + p.endpoint : ''}</div>
+                        <div style="font-size: 0.75rem; color: #666; margin-top: 2px;">Events: ${eventsLabel}</div>
+                    </div>
+                    <button onclick="togglePlugin('${p.name}', ${!p.enabled})" style="background: ${statusColor}22; color: ${statusColor}; border: 1px solid ${statusColor}; padding: 4px 12px; border-radius: 3px; cursor: pointer; font-size: 0.8rem;">${statusLabel}</button>
+                    <button onclick="deletePlugin('${p.name}')" style="background: rgba(255,100,100,0.1); color: #ff6464; border: 1px solid #ff6464; padding: 4px 10px; border-radius: 3px; cursor: pointer; font-size: 0.8rem;">削除</button>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function togglePlugin(name, enabled) {
+        await fetch(`http://localhost:8000/plugins/${encodeURIComponent(name)}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({enabled})
+        });
+        loadPlugins();
+    }
+
+    async function deletePlugin(name) {
+        if (!confirm(`プラグイン "${name}" を削除しますか？`)) return;
+        await fetch(`http://localhost:8000/plugins/${encodeURIComponent(name)}`, {method: 'DELETE'});
+        loadPlugins();
+    }
+
+    document.getElementById('addPluginBtn').addEventListener('click', async () => {
+        const name = document.getElementById('pluginName').value.trim();
+        if (!name) { alert('名前を入力してください'); return; }
+
+        const protocol = document.getElementById('pluginProtocol').value;
+        const endpoint = document.getElementById('pluginEndpoint').value.trim();
+        const eventCheckboxes = document.querySelectorAll('#pluginEventCheckboxes input[type=checkbox]:checked');
+        const events = Array.from(eventCheckboxes).map(cb => cb.value);
+
+        await fetch('http://localhost:8000/plugins', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name, protocol, endpoint, events, enabled: true})
+        });
+
+        document.getElementById('pluginName').value = '';
+        document.getElementById('pluginEndpoint').value = '';
+        document.querySelectorAll('#pluginEventCheckboxes input[type=checkbox]').forEach(cb => cb.checked = false);
+        loadPlugins();
+    });
+
+    // プロトコル変更時のヒント更新
+    document.getElementById('pluginProtocol').addEventListener('change', (e) => {
+        const hint = document.getElementById('pluginEndpointHint');
+        const endpointInput = document.getElementById('pluginEndpoint');
+        switch (e.target.value) {
+            case 'websocket':
+                hint.textContent = 'WebSocketプロトコルの場合、外部プロセスが ws://localhost:8000/ws/plugins に接続します';
+                endpointInput.placeholder = '（不要 — 外部から接続）';
+                break;
+            case 'webhook':
+                hint.textContent = 'イベント発生時にこのURLにPOSTリクエストを送信します';
+                endpointInput.placeholder = 'http://localhost:9999/webhook';
+                break;
+            case 'pipe':
+                hint.textContent = 'このコマンドを起動し、stdinにJSON Lines形式でイベントを流します';
+                endpointInput.placeholder = 'python3 /path/to/my_plugin.py';
+                break;
+            case 'exec':
+                hint.textContent = 'イベント発生時にこのコマンドを実行（環境変数でデータ渡し）';
+                endpointInput.placeholder = '/path/to/handler.sh';
+                break;
+        }
+    });
+
+    // プラグインタブ表示時にプラグイン一覧をロード
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            if (tab.dataset.tab === 'plugins') loadPlugins();
+        });
     });
 
   </script>
