@@ -9,8 +9,14 @@ from research_orchestrator import (
     ResearchOrchestrator,
     LLMSource,
     BraveSearchSource,
+    TavilySource,
+    PerplexitySource,
+    GoogleCustomSearchSource,
+    LightPandaSource,
     LimitlessAPISource,
     GogCLISource,
+    CustomAPISource,
+    ShellCommandSource,
 )
 
 # ロガー設定
@@ -111,31 +117,84 @@ class LLMPipeline:
                 logger.info("   ✅ Orchestrator re-initialized")
     
     def _init_orchestrator(self, settings: Dict) -> ResearchOrchestrator:
-        """Research Orchestratorを初期化"""
+        """Research OrchestratorをDBのソース設定に基づいて初期化"""
         sources = []
-        method = self.research_method
-        
-        # 常にLLMソースを追加（即答用）
-        sources.append(LLMSource(self.client))
-        logger.info("  ✅ LLM Source enabled (priority=1)")
-        
-        # research_methodに応じてソースを追加
-        if method == "hybrid":
-            # Brave Search（直接API）
-            brave_api_key = os.environ.get("BRAVE_API_KEY")
-            if brave_api_key:
-                sources.append(BraveSearchSource(brave_api_key))
-                logger.info("  ✅ Brave Search enabled (priority=2)")
-            
-            # Limitless API
-            limitless_api_key = os.environ.get("LIMITLESS_API_KEY")
-            if limitless_api_key:
-                sources.append(LimitlessAPISource(limitless_api_key))
-                logger.info("  ✅ Limitless API enabled (priority=4)")
-            
-            # gog CLI（オプション）
-            # sources.append(GogCLISource())
-        
+
+        # DBから有効なソース一覧を取得
+        db_sources = database.get_research_sources(enabled_only=True)
+
+        # 組み込みソースのファクトリマップ
+        builtin_factory = {
+            "LLM": lambda s: LLMSource(self.client),
+            "BraveSearch": lambda s: BraveSearchSource(
+                api_key=os.environ.get(json.loads(s['config']).get('env_key', 'BRAVE_API_KEY'))
+            ),
+            "Tavily": lambda s: TavilySource(
+                api_key=os.environ.get(json.loads(s['config']).get('env_key', 'TAVILY_API_KEY'))
+            ),
+            "Perplexity": lambda s: PerplexitySource(
+                api_key=os.environ.get(json.loads(s['config']).get('env_key', 'PERPLEXITY_API_KEY'))
+            ),
+            "GoogleSearch": lambda s: GoogleCustomSearchSource(
+                api_key=os.environ.get(json.loads(s['config']).get('env_key', 'GOOGLE_CSE_API_KEY')),
+                cx=os.environ.get(json.loads(s['config']).get('cx_env_key', 'GOOGLE_CSE_CX'))
+            ),
+            "LightPanda": lambda s: LightPandaSource(
+                api_key=os.environ.get(json.loads(s['config']).get('env_key', 'LIGHTPANDA_API_KEY'))
+            ),
+            "LimitlessAPI": lambda s: LimitlessAPISource(
+                api_key=os.environ.get(json.loads(s['config']).get('env_key', 'LIMITLESS_API_KEY'))
+            ),
+            "gogCLI": lambda s: GogCLISource(),
+        }
+
+        for db_src in db_sources:
+            try:
+                src_name = db_src['name']
+                src_type = db_src['source_type']
+                config = json.loads(db_src.get('config', '{}'))
+
+                if src_type == 'builtin':
+                    factory = builtin_factory.get(src_name)
+                    if factory:
+                        source = factory(db_src)
+                        source.priority = db_src['priority']
+                        source.timeout = db_src['timeout']
+                        sources.append(source)
+                        logger.info(f"  ✅ {src_name} enabled (priority={db_src['priority']})")
+
+                elif src_type == 'custom_api':
+                    source = CustomAPISource(
+                        name=src_name,
+                        endpoint=config.get('endpoint', ''),
+                        headers=config.get('headers', {}),
+                        method=config.get('method', 'GET'),
+                        body_template=config.get('body_template'),
+                        response_mapping=config.get('response_mapping', 'content'),
+                        priority=db_src['priority'],
+                        timeout=db_src['timeout']
+                    )
+                    sources.append(source)
+                    logger.info(f"  ✅ [Custom API] {src_name} enabled (priority={db_src['priority']})")
+
+                elif src_type == 'shell_command':
+                    source = ShellCommandSource(
+                        name=src_name,
+                        command_template=config.get('command', ''),
+                        priority=db_src['priority'],
+                        timeout=db_src['timeout']
+                    )
+                    sources.append(source)
+                    logger.info(f"  ✅ [Shell] {src_name} enabled (priority={db_src['priority']})")
+
+            except Exception as e:
+                logger.error(f"  ❌ ソース初期化エラー ({db_src.get('name', '?')}): {e}")
+
+        if not sources:
+            # フォールバック: LLMソースのみ
+            sources.append(LLMSource(self.client))
+            logger.info("  ⚠️  有効なソースなし → LLMフォールバック")
+
         return ResearchOrchestrator(sources, on_result=self._on_orchestrator_result)
     
     async def _on_orchestrator_result(self, result_data: Dict):

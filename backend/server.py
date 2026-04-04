@@ -102,6 +102,20 @@ class RecordingUpdateRequest(BaseModel):
 class SettingsUpdate(BaseModel):
     settings: Dict[str, str]
 
+class ResearchSourceCreate(BaseModel):
+    name: str
+    source_type: str  # "custom_api" | "shell_command"
+    priority: int = 5
+    timeout: float = 5.0
+    config: str = '{}'
+
+class ResearchSourceUpdate(BaseModel):
+    name: Optional[str] = None
+    enabled: Optional[int] = None
+    priority: Optional[int] = None
+    timeout: Optional[float] = None
+    config: Optional[str] = None
+
 # バックグラウンド処理: セッション終了時の処理
 async def process_session_end(session_id: int):
     print(f"🔄 Processing session end for ID: {session_id}")
@@ -536,6 +550,44 @@ async def create_prompt_api(item: PromptCreate):
 @app.delete("/prompts/{pid}")
 async def delete_prompt_api(pid: int):
     database.delete_prompt(pid); return {"success": True}
+# --- Research Sources API ---
+
+@app.get("/research-sources")
+async def list_research_sources():
+    """リサーチソース一覧を取得"""
+    return {"sources": database.get_research_sources()}
+
+@app.post("/research-sources")
+async def create_research_source_api(item: ResearchSourceCreate):
+    """リサーチソースを追加"""
+    new_id = database.create_research_source(
+        name=item.name,
+        source_type=item.source_type,
+        priority=item.priority,
+        timeout=item.timeout,
+        config=item.config
+    )
+    return {"id": new_id}
+
+@app.put("/research-sources/{source_id}")
+async def update_research_source_api(source_id: int, item: ResearchSourceUpdate):
+    """リサーチソースを更新"""
+    updates = {k: v for k, v in item.model_dump().items() if v is not None}
+    if updates:
+        database.update_research_source(source_id, **updates)
+    return {"success": True}
+
+@app.delete("/research-sources/{source_id}")
+async def delete_research_source_api(source_id: int):
+    """リサーチソースを削除（組み込みソースは削除不可）"""
+    source = database.get_research_source(source_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+    if source['source_type'] == 'builtin':
+        raise HTTPException(status_code=400, detail="Cannot delete builtin source")
+    database.delete_research_source(source_id)
+    return {"success": True}
+
 # --- Calendar APIs ---
 
 @app.get("/calendar/current")
