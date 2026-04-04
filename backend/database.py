@@ -6,7 +6,9 @@ from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = os.path.join(os.path.dirname(__file__), 'meeting_assistant.db')
+# パッケージ版: MEETING_ASSISTANT_CONFIG_DIR にDB保存、開発時: スクリプト横
+_config_dir = os.getenv('MEETING_ASSISTANT_CONFIG_DIR', os.path.dirname(__file__))
+DB_PATH = os.path.join(_config_dir, 'meeting_assistant.db')
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)

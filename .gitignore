@@ -8,4 +8,6 @@ build/
 venv/
 node_modules/
 creds.json
+logs/
 backend/logs/
+*.log

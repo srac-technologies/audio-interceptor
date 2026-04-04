@@ -13,6 +13,9 @@ import logging.handlers
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
+from logger import get_logger
+
+logger = get_logger("server")
 
 # ルートロガーを最初に設定（全モジュールのログが出力されるようにする）
 _log_format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -334,7 +337,7 @@ async def start_recording(request: RecordingStartRequest):
             title=session_title
         )
         logger.info("Session ID: %d", state.current_session_id)
-        
+
         # リサーチ機能の初期化
         logger.info("Transcribe enabled: %s", request.transcribe_enabled)
         
@@ -674,10 +677,11 @@ async def download_docx(session_id: int):
         advices=advices
     )
     
-    # 一時ファイルとして保存
+    # 一時ファイルとして保存（パッケージ版ではconfig_dir配下を使用）
     filename = f"meeting_{session_id}.docx"
-    tmp_path = Path("./tmp") / filename
-    tmp_path.parent.mkdir(exist_ok=True)
+    tmp_base = Path(config_dir) / "tmp"
+    tmp_path = tmp_base / filename
+    tmp_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(tmp_path)
     
     return FileResponse(
