@@ -48,6 +48,10 @@
       {
         "from": "../backend/.env.example",
         "to": "backend/.env.example"
+      },
+      {
+        "from": "../backend/CONFIG_README.txt",
+        "to": "backend/CONFIG_README.txt"
       }
     ],
     "linux": {

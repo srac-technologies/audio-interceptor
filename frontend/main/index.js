@@ -37,20 +37,28 @@ function setupConfigDirectory() {
     if (fs.existsSync(examplePath)) {
       fs.copyFileSync(examplePath, envPath);
       log.info('[Setup] Created .env file from example');
-      
-      // 初回起動の通知
-      dialog.showMessageBox({
-        type: 'info',
-        title: 'Meeting Assistant - 初回セットアップ',
-        message: '設定ファイルを作成しました',
-        detail: `設定ファイル: ${envPath}\n\nOpenAI API キーやGoogle Calendar設定を追加してください。`,
-        buttons: ['OK', '設定フォルダを開く']
-      }).then(result => {
-        if (result.response === 1) {
-          require('electron').shell.openPath(configDir);
-        }
-      });
     }
+
+    // セットアップガイドをコピー
+    const setupGuideSrc = path.join(process.resourcesPath, 'backend', 'CONFIG_README.txt');
+    const setupGuideDst = path.join(configDir, 'CONFIG_README.txt');
+    if (fs.existsSync(setupGuideSrc) && !fs.existsSync(setupGuideDst)) {
+      fs.copyFileSync(setupGuideSrc, setupGuideDst);
+      log.info('[Setup] Copied CONFIG_README.txt');
+    }
+
+    // 初回起動の通知
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'Meeting Assistant - 初回セットアップ',
+      message: '設定ファイルを作成しました',
+      detail: `設定フォルダ: ${configDir}\n\n1. .env ファイルに OpenAI API キーを設定\n2. Google Calendar を使う場合は creds.json を配置\n\n詳細は CONFIG_README.txt を参照してください。`,
+      buttons: ['OK', '設定フォルダを開く']
+    }).then(result => {
+      if (result.response === 1) {
+        require('electron').shell.openPath(configDir);
+      }
+    });
   }
 }
 
@@ -186,13 +194,19 @@ function startPythonBackend() {
     pythonArgs = [path.join(backendDir, 'server.py')];
   }
   
+  const configDir = app.isPackaged
+    ? path.join(app.getPath('userData'), 'config')
+    : path.join(__dirname, '../../backend');
+  const logDir = app.isPackaged
+    ? path.join(app.getPath('userData'), 'logs')
+    : path.join(__dirname, '../../logs');
+
   pythonProcess = spawn(pythonExecutable, pythonArgs, {
     env: {
       ...process.env,
       // 本番モードでは設定ファイルをユーザーディレクトリから読み込む
-      MEETING_ASSISTANT_CONFIG_DIR: app.isPackaged 
-        ? path.join(app.getPath('userData'), 'config')
-        : path.join(__dirname, '../../backend')
+      MEETING_ASSISTANT_CONFIG_DIR: configDir,
+      LOG_DIR: logDir
     }
   });
 

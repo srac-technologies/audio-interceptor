@@ -480,10 +480,11 @@ async def download_docx(session_id: int):
         advices=advices
     )
     
-    # 一時ファイルとして保存
+    # 一時ファイルとして保存（パッケージ版ではconfig_dir配下を使用）
     filename = f"meeting_{session_id}.docx"
-    tmp_path = Path("./tmp") / filename
-    tmp_path.parent.mkdir(exist_ok=True)
+    tmp_base = Path(config_dir) / "tmp"
+    tmp_path = tmp_base / filename
+    tmp_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(tmp_path)
     
     return FileResponse(

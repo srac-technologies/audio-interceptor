@@ -11,7 +11,12 @@ class CalendarService:
     def __init__(self, service_account_file: Optional[str] = None):
         self.service = None
         self.service_account_file = service_account_file or os.getenv('GOOGLE_SERVICE_ACCOUNT_FILE')
-        
+
+        # 相対パスの場合、設定ディレクトリを基準に解決する
+        if self.service_account_file and not os.path.isabs(self.service_account_file):
+            config_dir = os.getenv('MEETING_ASSISTANT_CONFIG_DIR', os.path.dirname(__file__))
+            self.service_account_file = os.path.join(config_dir, self.service_account_file)
+
         if self.service_account_file and os.path.exists(self.service_account_file):
             try:
                 credentials = service_account.Credentials.from_service_account_file(

@@ -11,7 +11,9 @@ from logging.handlers import RotatingFileHandler
 # 環境変数で制御: LOG_LEVEL, LOG_DIR, LOG_ENABLED
 LOG_ENABLED = os.getenv("LOG_ENABLED", "true").lower() == "true"
 LOG_LEVEL = os.getenv("LOG_LEVEL", "DEBUG" if not getattr(sys, 'frozen', False) else "WARNING")
-LOG_DIR = os.getenv("LOG_DIR", str(Path(__file__).parent / "logs"))
+# パッケージ版: LOG_DIR環境変数 → MEETING_ASSISTANT_CONFIG_DIR/logs → スクリプト横/logs
+_default_log_dir = str(Path(os.getenv('MEETING_ASSISTANT_CONFIG_DIR', str(Path(__file__).parent))) / "logs")
+LOG_DIR = os.getenv("LOG_DIR", _default_log_dir)
 LOG_MAX_BYTES = 5 * 1024 * 1024  # 5MB
 LOG_BACKUP_COUNT = 3
 
