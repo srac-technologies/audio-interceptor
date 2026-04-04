@@ -8,9 +8,12 @@ import asyncio
 import sys
 import os
 import json
+import logging
 from pathlib import Path
 from typing import Optional, Dict, Any
 from contextlib import asynccontextmanager
+
+logger = logging.getLogger(__name__)
 
 # .envファイルを読み込む
 try:
@@ -39,6 +42,9 @@ from llm_pipeline import LLMPipeline
 from calendar_service import calendar_service
 import file_manager
 from slack_service import SlackService
+from transcription import reset_transcription_service
+from transcription_engines import get_available_engines
+from refinement_providers import get_available_providers
 
 # グローバル状態
 class AppState:
@@ -447,9 +453,26 @@ async def update_settings(update: SettingsUpdate):
     try:
         for key, value in update.settings.items():
             database.update_setting(key, value)
+        # エンジン関連の設定が変更されたらシングルトンをリセット
+        engine_keys = {"transcription_engine", "transcription_model", "transcription_language"}
+        if engine_keys & set(update.settings.keys()):
+            reset_transcription_service()
+            logger.info("Transcription service reset due to engine settings change")
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# --- Transcription Engine & Refinement Provider APIs ---
+
+@app.get("/transcription/engines")
+async def list_transcription_engines():
+    """利用可能な文字起こしエンジン一覧"""
+    return {"engines": get_available_engines()}
+
+@app.get("/transcription/refinement-providers")
+async def list_refinement_providers():
+    """利用可能な精度向上LLMプロバイダ一覧"""
+    return {"providers": get_available_providers()}
 
 # --- History & Download APIs ---
 
