@@ -1,0 +1,637 @@
+/* ============================================================
+   Meeting Assistant - 共通テーマ
+   Electron / Chrome Extension で同一のビジュアルを実現する
+   ============================================================ */
+
+:root {
+  --color-bg: rgba(10, 15, 20, 0.95);
+  --color-bg-solid: #0a0f14;
+  --color-surface: rgba(20, 25, 30, 0.8);
+  --color-surface-dim: rgba(20, 25, 30, 0.6);
+  --color-border: rgba(255, 255, 255, 0.05);
+  --color-border-accent: rgba(0, 255, 170, 0.2);
+  --color-text: #e0e0e0;
+  --color-text-dim: #888;
+  --color-text-muted: #666;
+  --color-accent: #00ffaa;
+  --color-accent-hover: #00dd99;
+  --color-mic: #6496ff;
+  --color-danger: #ff4757;
+  --color-danger-hover: #ee3344;
+  --color-success: #48bb78;
+  --color-warning: #ffc864;
+  --color-info: #4299e1;
+  --font-mono: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  --radius: 6px;
+  --radius-sm: 4px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-mono);
+  background: var(--color-bg-solid);
+  color: var(--color-text);
+  font-size: 13px;
+  overflow: hidden;
+  height: 100vh;
+}
+
+/* Electron用: ウィンドウドラッグ */
+body.platform-electron {
+  background: var(--color-bg);
+  -webkit-app-region: drag;
+}
+
+body.platform-electron button,
+body.platform-electron input,
+body.platform-electron select,
+body.platform-electron textarea,
+body.platform-electron details {
+  -webkit-app-region: no-drag;
+}
+
+/* ---- コンテナ ---- */
+.ma-container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  gap: 8px;
+}
+
+/* ---- ヘッダー ---- */
+.ma-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-accent);
+  border-radius: var(--radius);
+  flex-shrink: 0;
+}
+
+.ma-header h1 {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--color-accent);
+  letter-spacing: 1px;
+}
+
+.ma-header-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.ma-header-buttons button {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--color-text-dim);
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  transition: all 0.2s;
+}
+
+.ma-header-buttons button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.ma-connection-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-danger);
+  transition: background 0.3s;
+}
+
+.ma-connection-dot.connected {
+  background: var(--color-accent);
+}
+
+/* ---- ステータスバー ---- */
+.ma-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--color-surface-dim);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.ma-status-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+  animation: ma-pulse 2s infinite;
+}
+
+.ma-status-indicator.active {
+  background: var(--color-accent);
+}
+
+@keyframes ma-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.ma-recording-indicator {
+  display: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-danger);
+  animation: ma-blink 1s infinite;
+}
+
+.ma-recording-indicator.active {
+  display: block;
+}
+
+@keyframes ma-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ---- コントロール ---- */
+.ma-controls {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.ma-controls-collapsible {
+  background: var(--color-surface-dim);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  margin-bottom: 2px;
+  overflow: hidden;
+}
+
+.ma-controls-collapsible summary {
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--color-text-dim);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ma-controls-collapsible summary::-webkit-details-marker {
+  display: none;
+}
+
+.ma-controls-collapsible summary::before {
+  content: '\25B6';
+  font-size: 0.7rem;
+  transition: transform 0.2s;
+}
+
+.ma-controls-collapsible[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.ma-controls-collapsible summary:hover {
+  color: #fff;
+}
+
+.ma-controls-content {
+  padding: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+/* ---- ボタン ---- */
+.ma-btn {
+  flex: 1;
+  padding: 10px;
+  font-size: 0.9rem;
+  border: 1px solid;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-weight: 500;
+  font-family: var(--font-mono);
+  transition: all 0.2s;
+}
+
+.ma-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.ma-btn-start {
+  background: rgba(0, 255, 170, 0.15);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.ma-btn-start:hover:not(:disabled) {
+  background: rgba(0, 255, 170, 0.25);
+}
+
+.ma-btn-stop {
+  background: rgba(255, 68, 68, 0.15);
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.ma-btn-stop:hover:not(:disabled) {
+  background: rgba(255, 68, 68, 0.25);
+}
+
+.ma-btn-mute {
+  background: rgba(100, 150, 255, 0.15);
+  border-color: var(--color-mic);
+  color: var(--color-mic);
+  flex: 0 0 auto;
+  padding: 10px 16px;
+}
+
+.ma-btn-mute:hover:not(:disabled) {
+  background: rgba(100, 150, 255, 0.25);
+}
+
+.ma-btn-mute.muted {
+  background: rgba(255, 150, 50, 0.15);
+  border-color: #ff9632;
+  color: #ff9632;
+}
+
+.ma-btn-save {
+  background: var(--color-success);
+  color: white;
+  border: none;
+  width: auto;
+  padding: 10px 30px;
+}
+
+.ma-btn-danger {
+  background: #e53e3e;
+  color: white;
+  border: none;
+}
+
+/* ---- フォーム ---- */
+.ma-form-group {
+  margin-bottom: 12px;
+}
+
+.ma-form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+  color: var(--color-text-dim);
+  font-weight: 500;
+}
+
+.ma-input,
+.ma-select,
+.ma-textarea {
+  width: 100%;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-size: 0.9rem;
+  font-family: var(--font-mono);
+  transition: border-color 0.2s;
+}
+
+.ma-input:focus,
+.ma-select:focus,
+.ma-textarea:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.ma-checkbox-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.ma-checkbox-group input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.ma-hint {
+  font-size: 0.8rem;
+  color: var(--color-text-dim);
+  margin-top: 4px;
+}
+
+/* ---- パネル ---- */
+.ma-main-area {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  min-height: 0;
+}
+
+.ma-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface-dim);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.ma-panel-header {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-dim);
+}
+
+.ma-panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.ma-panel[hidden] {
+  display: none;
+}
+
+/* ---- タブ ---- */
+.ma-tabs {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.ma-tab {
+  flex: 1;
+  padding: 8px;
+  background: var(--color-surface-dim);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  color: var(--color-text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s;
+}
+
+.ma-tab.active {
+  background: rgba(0, 255, 170, 0.1);
+  border-color: rgba(0, 255, 170, 0.3);
+  color: var(--color-accent);
+}
+
+.ma-tab .ma-badge {
+  display: inline-block;
+  background: rgba(0, 255, 170, 0.2);
+  color: var(--color-accent);
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  margin-left: 4px;
+}
+
+/* ---- 文字起こしバブル ---- */
+.ma-transcript-bubble {
+  max-width: 85%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-bottom: 6px;
+}
+
+.ma-transcript-bubble.speaker {
+  align-self: flex-start;
+  background: rgba(0, 255, 170, 0.08);
+  border-left: 3px solid var(--color-accent);
+}
+
+.ma-transcript-bubble.mic {
+  align-self: flex-end;
+  background: rgba(100, 150, 255, 0.08);
+  border-right: 3px solid var(--color-mic);
+}
+
+.ma-bubble-label {
+  font-size: 0.7rem;
+  opacity: 0.6;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.ma-bubble-label.speaker { color: var(--color-accent); }
+.ma-bubble-label.mic { color: var(--color-mic); }
+
+/* 文字起こしエントリ (コンパクト版 - Chrome Extension向け) */
+.ma-transcript-entry {
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  line-height: 1.5;
+}
+
+.ma-transcript-entry .source {
+  color: var(--color-accent);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.ma-transcript-entry .text {
+  color: #ccc;
+}
+
+/* ---- リサーチアイテム ---- */
+.ma-research-item {
+  background: rgba(255, 200, 100, 0.05);
+  border-left: 3px solid var(--color-warning);
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.ma-research-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  opacity: 0.6;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.ma-research-content {
+  white-space: pre-wrap;
+}
+
+/* ---- 空状態 ---- */
+.ma-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #444;
+  font-size: 0.85rem;
+  text-align: center;
+  line-height: 1.8;
+}
+
+/* ---- モーダル ---- */
+.ma-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.85);
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.ma-modal.open {
+  display: flex;
+}
+
+.ma-modal-content {
+  background: rgba(15, 20, 25, 0.98);
+  border: 1px solid var(--color-border-accent);
+  width: 90%;
+  max-width: 1000px;
+  height: 90%;
+  border-radius: 8px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.ma-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ma-modal-header h2 {
+  font-size: 1.2rem;
+  color: var(--color-accent);
+}
+
+.ma-close-btn {
+  background: none;
+  border: none;
+  color: var(--color-text-dim);
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+}
+
+.ma-close-btn:hover {
+  color: #fff;
+}
+
+/* ---- モーダルタブ ---- */
+.ma-modal-tabs {
+  display: flex;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 20px;
+}
+
+.ma-modal-tab {
+  padding: 10px 20px;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: all 0.2s;
+  border-bottom: 2px solid transparent;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+
+.ma-modal-tab.active {
+  opacity: 1;
+  border-bottom-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.ma-modal-tab-content {
+  display: none;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.ma-modal-tab-content.active {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- スクロールバー ---- */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ---- ユーティリティ ---- */
+.ma-divider {
+  margin: 20px 0;
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ma-section-title {
+  margin-bottom: 15px;
+  color: var(--color-accent);
+}
+
+.ma-flex { display: flex; }
+.ma-flex-1 { flex: 1; }
+.ma-flex-2 { flex: 2; }
+.ma-gap-8 { gap: 8px; }
+.ma-gap-10 { gap: 10px; }
+.ma-gap-20 { gap: 20px; }
+.ma-text-right { text-align: right; }
+.ma-hidden { display: none; }
