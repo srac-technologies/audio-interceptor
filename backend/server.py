@@ -13,6 +13,9 @@ import logging.handlers
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
+from logger import get_logger
+
+logger = get_logger("server")
 
 # ルートロガーを最初に設定（全モジュールのログが出力されるようにする）
 _log_format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -334,7 +337,7 @@ async def start_recording(request: RecordingStartRequest):
             title=session_title
         )
         logger.info("Session ID: %d", state.current_session_id)
-        
+
         # リサーチ機能の初期化
         logger.info("Transcribe enabled: %s", request.transcribe_enabled)
         
