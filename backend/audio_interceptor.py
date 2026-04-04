@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Audio Interceptor v3 - PulseAudio/PipeWire両対応
+Audio Interceptor v4 - マルチプラットフォーム対応
+Linux (PulseAudio/PipeWire), macOS (CoreAudio), Windows (WASAPI)
 スピーカー出力とマイク入力をインターセプトして記録 + Whisper文字起こし
 """
 
@@ -8,13 +9,16 @@ import os
 import sys
 import time
 import wave
+import array
 import signal
 import subprocess
 import threading
 import json
 import asyncio
+import platform
 from pathlib import Path
 from datetime import datetime
+from abc import ABC, abstractmethod
 
 # 設定
 SAMPLE_RATE = 48000
@@ -22,20 +26,351 @@ CHANNELS = 2
 CHUNK_SECONDS = 10
 SAMPLE_WIDTH = 2  # 16-bit
 
-class AudioInterceptor:
-    def __init__(self, tmp_dir="./tmp", target_sink=None, transcribe_enabled=False, on_transcript=None):
+
+def get_platform():
+    """現在のプラットフォームを返す"""
+    system = platform.system()
+    if system == "Linux":
+        return "linux"
+    elif system == "Darwin":
+        return "macos"
+    elif system == "Windows":
+        return "windows"
+    return system.lower()
+
+
+class AudioBackend(ABC):
+    """音声キャプチャのプラットフォーム抽象化レイヤー"""
+
+    @abstractmethod
+    def setup(self, target_sink=None):
+        """音声デバイスをセットアップ"""
+        pass
+
+    @abstractmethod
+    def cleanup(self):
+        """音声デバイスをクリーンアップ"""
+        pass
+
+    @abstractmethod
+    def get_speaker_source(self) -> str:
+        """スピーカー録音用のソース識別子を返す"""
+        pass
+
+    @abstractmethod
+    def get_mic_source(self) -> str:
+        """マイク録音用のソース識別子を返す"""
+        pass
+
+    @abstractmethod
+    def record_chunk(self, source: str, label: str) -> bytes:
+        """指定ソースからCHUNK_SECONDS分のPCMデータを録音して返す"""
+        pass
+
+    @abstractmethod
+    def get_available_sinks(self) -> list:
+        """利用可能な出力デバイスのリストを返す"""
+        pass
+
+
+class LinuxAudioBackend(AudioBackend):
+    """Linux (PulseAudio/PipeWire) 用バックエンド"""
+
+    def __init__(self):
         self.virtual_sink_name = "virtual_speaker_interceptor"
-        self.tmp_dir = Path(tmp_dir)
-        self.running = True
         self.sink_module_id = None
         self.loopback_module_id = None
-        self.threads = []
         self.default_source = None
+
+    def setup(self, target_sink=None):
+        # デフォルトのマイクソースを取得
+        try:
+            result = subprocess.run(
+                ["pactl", "get-default-source"],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                self.default_source = result.stdout.strip()
+                print(f"Default microphone source: {self.default_source}")
+        except Exception:
+            pass
+
+        # 仮想スピーカー（null sink）を作成
+        result = subprocess.run([
+            "pactl", "load-module", "module-null-sink",
+            f"sink_name={self.virtual_sink_name}",
+            f"sink_properties=device.description='Virtual_Speaker_Interceptor'"
+        ], capture_output=True, text=True)
+
+        if result.returncode == 0:
+            self.sink_module_id = result.stdout.strip()
+            print(f"✅ Created virtual speaker: {self.virtual_sink_name} (module {self.sink_module_id})")
+        else:
+            raise Exception(f"Failed to create virtual sink: {result.stderr}")
+
+        # 仮想スピーカーから実際のスピーカーへループバック
+        loopback_args = [
+            "pactl", "load-module", "module-loopback",
+            f"source={self.virtual_sink_name}.monitor",
+            "latency_msec=50"
+        ]
+        if target_sink:
+            loopback_args.append(f"sink={target_sink}")
+            print(f"   Looping back to: {target_sink}")
+
+        result = subprocess.run(loopback_args, capture_output=True, text=True)
+        if result.returncode == 0:
+            self.loopback_module_id = result.stdout.strip()
+            print(f"✅ Created loopback to real speaker (module {self.loopback_module_id})")
+
+    def cleanup(self):
+        if self.loopback_module_id:
+            subprocess.run(["pactl", "unload-module", self.loopback_module_id],
+                         stderr=subprocess.DEVNULL)
+        if self.sink_module_id:
+            subprocess.run(["pactl", "unload-module", self.sink_module_id],
+                         stderr=subprocess.DEVNULL)
+
+    def get_speaker_source(self) -> str:
+        return f"{self.virtual_sink_name}.monitor"
+
+    def get_mic_source(self) -> str:
+        return self.default_source or ""
+
+    def record_chunk(self, source: str, label: str) -> bytes:
+        chunk_size = SAMPLE_RATE * CHANNELS * SAMPLE_WIDTH * CHUNK_SECONDS
+        process = subprocess.Popen([
+            "parec",
+            "--device", source,
+            "--format", "s16le",
+            "--rate", str(SAMPLE_RATE),
+            "--channels", str(CHANNELS),
+            "--raw"
+        ], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+
+        audio_data = b''
+        bytes_read = 0
+        while bytes_read < chunk_size:
+            chunk = process.stdout.read(min(8192, chunk_size - bytes_read))
+            if not chunk:
+                break
+            audio_data += chunk
+            bytes_read += len(chunk)
+
+        process.terminate()
+        try:
+            process.wait(timeout=1)
+        except Exception:
+            process.kill()
+
+        return audio_data
+
+    def get_available_sinks(self) -> list:
+        try:
+            result = subprocess.run(
+                ["pactl", "list", "short", "sinks"],
+                capture_output=True, text=True
+            )
+            if result.returncode != 0:
+                return []
+            sinks = []
+            for line in result.stdout.strip().split('\n'):
+                parts = line.split('\t')
+                if len(parts) >= 2:
+                    sinks.append({"id": parts[0], "name": parts[1]})
+            return sinks
+        except Exception:
+            return []
+
+
+class SounddeviceAudioBackend(AudioBackend):
+    """macOS / Windows 用バックエンド (sounddevice + PortAudio)"""
+
+    def __init__(self):
+        self._sd = None
+        self._np = None
+        self._speaker_device = None
+        self._mic_device = None
+        self._loopback_device = None
+
+    def _import_deps(self):
+        if self._sd is None:
+            try:
+                import sounddevice as sd
+                import numpy as np
+                self._sd = sd
+                self._np = np
+            except ImportError:
+                raise ImportError(
+                    "sounddevice と numpy が必要です。\n"
+                    "pip install sounddevice numpy"
+                )
+
+    def setup(self, target_sink=None):
+        self._import_deps()
+        sd = self._sd
+
+        current_platform = get_platform()
+
+        # デフォルトデバイスを取得
+        default_input, default_output = sd.default.device
+
+        # マイクデバイス
+        if default_input is not None and default_input >= 0:
+            self._mic_device = default_input
+            info = sd.query_devices(default_input)
+            print(f"Default microphone: {info['name']}")
+        else:
+            print("⚠️  No default input device found")
+
+        # スピーカー（ループバック）デバイス
+        if current_platform == "macos":
+            self._setup_macos_loopback(target_sink)
+        elif current_platform == "windows":
+            self._setup_windows_loopback(target_sink)
+
+    def _setup_macos_loopback(self, target_sink=None):
+        """macOS: BlackHole / Soundflower などの仮想デバイスを検索"""
+        sd = self._sd
+        devices = sd.query_devices()
+
+        # 仮想ループバックデバイスを探す
+        loopback_names = ["BlackHole", "Soundflower", "Loopback"]
+        for i, dev in enumerate(devices):
+            if dev['max_input_channels'] > 0:
+                for name in loopback_names:
+                    if name.lower() in dev['name'].lower():
+                        self._loopback_device = i
+                        print(f"✅ Found loopback device: {dev['name']}")
+                        break
+            if self._loopback_device is not None:
+                break
+
+        if self._loopback_device is None:
+            print("⚠️  No loopback device found (BlackHole/Soundflower).")
+            print("   スピーカー音声のキャプチャには BlackHole のインストールが必要です:")
+            print("   brew install blackhole-2ch")
+            print("   インストール後、Audio MIDI Setup でマルチ出力デバイスを作成してください。")
+
+        # target_sinkが指定されていれば出力デバイスを設定
+        if target_sink:
+            for i, dev in enumerate(devices):
+                if dev['max_output_channels'] > 0 and target_sink in dev['name']:
+                    self._speaker_device = i
+                    print(f"   Output device: {dev['name']}")
+                    break
+
+    def _setup_windows_loopback(self, target_sink=None):
+        """Windows: WASAPI loopback を使用"""
+        sd = self._sd
+        devices = sd.query_devices()
+
+        # Windows WASAPI loopback デバイスを探す
+        # sounddevice は hostapi=WASAPI の場合、ループバック入力が利用可能
+        for i, dev in enumerate(devices):
+            name_lower = dev['name'].lower()
+            if dev['max_input_channels'] > 0 and (
+                'loopback' in name_lower or
+                'stereo mix' in name_lower or
+                'what u hear' in name_lower or
+                'wave out' in name_lower
+            ):
+                self._loopback_device = i
+                print(f"✅ Found loopback device: {dev['name']}")
+                break
+
+        if self._loopback_device is None:
+            # WASAPI loopback を試行 (sounddevice >= 0.4.0)
+            for i, dev in enumerate(devices):
+                if dev['max_output_channels'] > 0 and dev.get('hostapi') is not None:
+                    hostapi = sd.query_hostapis(dev['hostapi'])
+                    if 'wasapi' in hostapi.get('name', '').lower():
+                        # WASAPI output devices can be opened as loopback
+                        self._loopback_device = i
+                        print(f"✅ Using WASAPI loopback: {dev['name']}")
+                        break
+
+        if self._loopback_device is None:
+            print("⚠️  No loopback device found.")
+            print("   スピーカー音声のキャプチャには「ステレオミキサー」を有効にするか、")
+            print("   VB-Audio Virtual Cable のインストールが必要な場合があります。")
+
+        if target_sink:
+            for i, dev in enumerate(devices):
+                if dev['max_output_channels'] > 0 and target_sink in dev['name']:
+                    self._speaker_device = i
+                    print(f"   Output device: {dev['name']}")
+                    break
+
+    def cleanup(self):
+        # sounddevice は明示的なクリーンアップ不要
+        pass
+
+    def get_speaker_source(self) -> str:
+        if self._loopback_device is not None:
+            return str(self._loopback_device)
+        return ""
+
+    def get_mic_source(self) -> str:
+        if self._mic_device is not None:
+            return str(self._mic_device)
+        return ""
+
+    def record_chunk(self, source: str, label: str) -> bytes:
+        sd = self._sd
+        np = self._np
+
+        device_id = int(source) if source else None
+        num_frames = SAMPLE_RATE * CHUNK_SECONDS
+
+        try:
+            recording = sd.rec(
+                frames=num_frames,
+                samplerate=SAMPLE_RATE,
+                channels=CHANNELS,
+                dtype='int16',
+                device=device_id,
+                blocking=True
+            )
+            return recording.tobytes()
+        except Exception as e:
+            print(f"⚠️  Recording error ({label}): {e}")
+            return b''
+
+    def get_available_sinks(self) -> list:
+        self._import_deps()
+        sd = self._sd
+        devices = sd.query_devices()
+        sinks = []
+        for i, dev in enumerate(devices):
+            if dev['max_output_channels'] > 0:
+                sinks.append({"id": str(i), "name": dev['name']})
+        return sinks
+
+
+def create_audio_backend() -> AudioBackend:
+    """プラットフォームに応じた AudioBackend を返す"""
+    current_platform = get_platform()
+    if current_platform == "linux":
+        return LinuxAudioBackend()
+    elif current_platform in ("macos", "windows"):
+        return SounddeviceAudioBackend()
+    else:
+        print(f"⚠️  Unknown platform: {current_platform}, falling back to sounddevice")
+        return SounddeviceAudioBackend()
+
+
+class AudioInterceptor:
+    def __init__(self, tmp_dir="./tmp", target_sink=None, transcribe_enabled=False, on_transcript=None):
+        self.tmp_dir = Path(tmp_dir)
+        self.running = True
+        self.threads = []
         self.target_sink = target_sink
         self.transcribe_enabled = transcribe_enabled
         self.on_transcript = on_transcript
-        self.mic_muted = False  # マイクミュート状態
-        
+        self.mic_muted = False
+        self.backend = create_audio_backend()
+
         # Transcription Serviceの初期化（遅延初期化）
         self.transcription_service = None
         if self.transcribe_enabled:
@@ -47,188 +382,109 @@ class AudioInterceptor:
                 print(f"⚠️  Warning: Failed to initialize Transcription Service: {e}")
                 print("   Falling back to recording only mode.")
                 self.transcribe_enabled = False
-            
-    def get_default_source(self):
-        """デフォルトのマイクソースを取得"""
-        try:
-            result = subprocess.run(
-                ["pactl", "get-default-source"],
-                capture_output=True, text=True
-            )
-            if result.returncode == 0:
-                return result.stdout.strip()
-        except:
-            pass
-        return None
-    
+
     def setup(self):
-        """仮想オーディオデバイスをセットアップ"""
-        print("Setting up virtual audio devices...")
-        
+        """音声デバイスをセットアップ"""
+        print(f"Setting up audio devices (platform: {get_platform()})...")
+
         try:
-            # デフォルトのマイクソースを取得
-            self.default_source = self.get_default_source()
-            if self.default_source:
-                print(f"Default microphone source: {self.default_source}")
-            
-            # 仮想スピーカー（null sink）を作成
-            result = subprocess.run([
-                "pactl", "load-module", "module-null-sink",
-                f"sink_name={self.virtual_sink_name}",
-                f"sink_properties=device.description='Virtual_Speaker_Interceptor'"
-            ], capture_output=True, text=True)
-            
-            if result.returncode == 0:
-                self.sink_module_id = result.stdout.strip()
-                print(f"✅ Created virtual speaker: {self.virtual_sink_name} (module {self.sink_module_id})")
-            else:
-                raise Exception(f"Failed to create virtual sink: {result.stderr}")
-            
-            # 仮想スピーカーから実際のスピーカーへループバック
-            loopback_args = [
-                "pactl", "load-module", "module-loopback",
-                f"source={self.virtual_sink_name}.monitor",
-                "latency_msec=50"
-            ]
-            
-            # ターゲットシンクが指定されている場合は追加
-            if self.target_sink:
-                loopback_args.append(f"sink={self.target_sink}")
-                print(f"   Looping back to: {self.target_sink}")
-            
-            result = subprocess.run(loopback_args, capture_output=True, text=True)
-            
-            if result.returncode == 0:
-                self.loopback_module_id = result.stdout.strip()
-                print(f"✅ Created loopback to real speaker (module {self.loopback_module_id})")
-            
-            print("\n📋 Setup complete!")
-            print(f"   Virtual Speaker: {self.virtual_sink_name}")
-            print(f"   Microphone: {self.default_source or 'default'}")
+            self.backend.setup(target_sink=self.target_sink)
+
+            speaker_src = self.backend.get_speaker_source()
+            mic_src = self.backend.get_mic_source()
+
+            print(f"\n📋 Setup complete!")
+            print(f"   Speaker source: {speaker_src or '(none)'}")
+            print(f"   Microphone: {mic_src or 'default'}")
             if self.transcribe_enabled:
-                print("   📝 Transcription: ENABLED (Whisper API)")
+                print("   📝 Transcription: ENABLED")
             else:
                 print("   📝 Transcription: DISABLED")
-            
+
         except Exception as e:
             print(f"❌ Setup failed: {e}")
             self.cleanup()
             sys.exit(1)
-    
+
     def set_mic_mute(self, muted: bool):
         """マイクのミュート状態を設定"""
         self.mic_muted = muted
         status = "MUTED 🔇" if muted else "UNMUTED 🎤"
         print(f"🎤 Microphone {status}")
-    
+
     def cleanup(self):
-        """仮想オーディオデバイスをクリーンアップ"""
-        print("\n🧹 Cleaning up virtual audio devices...")
+        """音声デバイスをクリーンアップ"""
+        print("\n🧹 Cleaning up audio devices...")
         self.running = False
-        
-        # スレッドの終了を待つ
+
         for thread in self.threads:
             if thread.is_alive():
                 thread.join(timeout=2)
-        
-        # モジュールをアンロード
-        if self.loopback_module_id:
-            subprocess.run(["pactl", "unload-module", self.loopback_module_id], 
-                         stderr=subprocess.DEVNULL)
-        
-        if self.sink_module_id:
-            subprocess.run(["pactl", "unload-module", self.sink_module_id], 
-                         stderr=subprocess.DEVNULL)
-        
+
+        self.backend.cleanup()
         print("✅ Cleanup complete")
-    
+
     def start_intercepting(self):
         """音声インターセプションを開始"""
         print("\n🎙️  Starting audio interception...")
-        
-        # 出力ディレクトリを作成
+
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
-        
-        # スピーカー出力を録音（会議アプリからの出力）
-        speaker_thread = threading.Thread(
-            target=self.record_audio_stream,
-            args=(f"{self.virtual_sink_name}.monitor", "speaker"),
-            daemon=True
-        )
-        speaker_thread.start()
-        self.threads.append(speaker_thread)
-        
-        # マイク入力を録音（実際のマイクから）
-        if self.default_source:
+
+        # スピーカー出力を録音
+        speaker_src = self.backend.get_speaker_source()
+        if speaker_src:
+            speaker_thread = threading.Thread(
+                target=self.record_audio_stream,
+                args=(speaker_src, "speaker"),
+                daemon=True
+            )
+            speaker_thread.start()
+            self.threads.append(speaker_thread)
+        else:
+            print("⚠️  No speaker loopback source available, skipping speaker recording")
+
+        # マイク入力を録音
+        mic_src = self.backend.get_mic_source()
+        if mic_src:
             mic_thread = threading.Thread(
                 target=self.record_audio_stream,
-                args=(self.default_source, "mic"),
+                args=(mic_src, "mic"),
                 daemon=True
             )
             mic_thread.start()
             self.threads.append(mic_thread)
         else:
-            print("⚠️  Warning: No default microphone found, only recording speaker output")
-        
+            print("⚠️  No default microphone found, only recording speaker output")
+
         print(f"💾 Saving 10-second chunks to: {self.tmp_dir.absolute()}")
-    
+
     def record_audio_stream(self, source, label):
         """音声ストリームを10秒チャンクで録音"""
         chunk_index = 0
-        
+
         while self.running:
             try:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 filename = self.tmp_dir / f"{label}_{timestamp}_{chunk_index}.wav"
-                
+
                 print(f"⏺️  Recording {label} chunk {chunk_index}...")
-                
-                # parecで音声をキャプチャ
-                chunk_size = SAMPLE_RATE * CHANNELS * SAMPLE_WIDTH * CHUNK_SECONDS
-                
-                process = subprocess.Popen([
-                    "parec",
-                    "--device", source,
-                    "--format", "s16le",
-                    "--rate", str(SAMPLE_RATE),
-                    "--channels", str(CHANNELS),
-                    "--raw"
-                ], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-                
-                # 10秒分のデータを読み込む
-                audio_data = b''
-                bytes_read = 0
-                
-                while bytes_read < chunk_size and self.running:
-                    chunk = process.stdout.read(min(8192, chunk_size - bytes_read))
-                    if not chunk:
-                        break
-                    audio_data += chunk
-                    bytes_read += len(chunk)
-                
-                # プロセスを終了
-                process.terminate()
-                try:
-                    process.wait(timeout=1)
-                except:
-                    process.kill()
-                
+
+                audio_data = self.backend.record_chunk(source, label)
+
                 if not self.running:
                     break
-                
-                # WAVファイルに書き込む
+
                 if audio_data:
                     # マイクミュート中はスキップ
                     if label == "mic" and self.mic_muted:
                         print(f"🔇 Mic muted - skipping chunk {chunk_index}")
                         chunk_index += 1
                         continue
-                    
+
                     self.write_wav(filename, audio_data)
                     size_kb = len(audio_data) / 1024
                     print(f"✅ Saved {label} chunk {chunk_index}: {filename.name} ({size_kb:.1f} KB)")
-                    
-                    # 文字起こしモードならAPIに投げる
+
                     if self.transcribe_enabled:
                         transcribe_thread = threading.Thread(
                             target=self.transcribe_audio,
@@ -236,16 +492,16 @@ class AudioInterceptor:
                             daemon=True
                         )
                         transcribe_thread.start()
-                
+
                 chunk_index += 1
-                
+
             except Exception as e:
                 if self.running:
                     print(f"❌ Error recording {label}: {e}")
                     time.sleep(1)
                 else:
                     break
-    
+
     def write_wav(self, filename, pcm_data):
         """PCMデータをWAVファイルとして書き込む"""
         try:
@@ -261,41 +517,29 @@ class AudioInterceptor:
         """音声ファイルが無音かどうかをチェック"""
         try:
             with wave.open(str(filename), 'rb') as wav_file:
-                # サンプル数を取得
                 n_frames = wav_file.getnframes()
-                
-                # 全フレームを読み込む
                 frames = wav_file.readframes(n_frames)
-                
-                # 16-bit PCMデータをint16配列に変換
                 samples = array.array('h', frames)
-                
-                # RMS（二乗平均平方根）を計算
                 if len(samples) == 0:
                     return True
-                
                 sum_squares = sum(s * s for s in samples)
                 rms = (sum_squares / len(samples)) ** 0.5
-                
-                # 閾値以下なら無音とみなす
                 return rms < threshold
         except Exception as e:
             print(f"⚠️ Failed to check silence: {e}")
             return False
-    
+
     def transcribe_audio(self, filename, label):
-        """Transcription Serviceを使って文字起こし（API/Localモード統合版）"""
+        """Transcription Serviceを使って文字起こし"""
         try:
-            # 無音チェック
             if self.is_silent(filename):
                 print(f"🔇 Skipping silent audio: {filename.name}")
                 return
-            
+
             if not self.transcription_service:
                 print("⚠️ Transcription service not available")
                 return
-            
-            # asyncioループで実行
+
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
@@ -304,9 +548,9 @@ class AudioInterceptor:
                 )
             finally:
                 loop.close()
-            
+
             text = result.get('text', '').strip()
-            
+
             # ハルシネーション対策フィルタ
             hallucination_phrases = [
                 'ご視聴ありがとうございました',
@@ -318,47 +562,32 @@ class AudioInterceptor:
                 'Subscribe',
                 'Like and subscribe'
             ]
-            
-            # 短いテキストに定型文が含まれる場合はスキップ
+
             if text and len(text) < 50:
                 for phrase in hallucination_phrases:
                     if phrase in text:
                         print(f"🚫 Filtered hallucination: {text}")
                         return
-            
+
             if text:
-                # ログ出力
                 prefix = "[Speaker 🔊]" if label == "speaker" else "[Mic 🎤]"
                 print(f"\n{prefix} {text}\n")
-                
-                # コールバック呼び出し
+
                 if self.on_transcript:
                     try:
                         self.on_transcript(label, text)
                     except Exception as cb_err:
                         print(f"⚠️ Callback error: {cb_err}")
-                    
+
         except Exception as e:
             print(f"⚠️ Transcription error: {e}")
 
+
 def get_available_sinks():
-    """利用可能なシンク（出力デバイス）のリストを返す"""
-    try:
-        result = subprocess.run(
-            ["pactl", "list", "short", "sinks"],
-            capture_output=True, text=True
-        )
-        if result.returncode != 0:
-            return []
-        
-        sinks = []
-        for line in result.stdout.strip().split('\n'):
-            parts = line.split('\t')
-            if len(parts) >= 2:
-                sinks.append(parts[1])
-        return sinks
-    except:
-        return []
+    """利用可能なシンク（出力デバイス）のリストを返す（後方互換）"""
+    backend = create_audio_backend()
+    return [s["name"] for s in backend.get_available_sinks()]
+
 
 def select_sink():
     """インタラクティブにスピーカーを選択"""
@@ -366,12 +595,12 @@ def select_sink():
     if not sinks:
         print("⚠️  No sinks found. Using default.")
         return None
-        
+
     print("\n🔊 Available Output Devices:")
     for i, sink in enumerate(sinks):
         print(f"  [{i+1}] {sink}")
     print(f"  [Enter] Default (OS setting)")
-    
+
     while True:
         try:
             choice = input("\nSelect output device (number): ").strip()
@@ -384,12 +613,13 @@ def select_sink():
         except ValueError:
             print("Please enter a number.")
 
+
 def select_mode():
     """インタラクティブにモードを選択"""
     print("\n🎙️  Operation Mode:")
     print("  [1] Recording only (WAV)")
     print("  [2] Recording + Transcription (Whisper API)")
-    
+
     while True:
         choice = input("\nSelect mode [1/2]: ").strip()
         if choice == "1" or not choice:
@@ -400,66 +630,70 @@ def select_mode():
                 continue
             return True
 
+
 def print_instructions(interceptor):
     """使用方法を表示"""
+    current_platform = get_platform()
     print("\n" + "="*60)
     print("🎧 Audio Interceptor Started")
+    print(f"   Platform: {current_platform}")
     print("="*60)
-    print("\n📝 Setup Instructions:")
-    print(f"   1. Open your meeting app (Zoom, Discord, Meet, etc.)")
-    print(f"   2. Set the app's SPEAKER/OUTPUT to:")
-    print(f"      → Virtual_Speaker_Interceptor")
-    print(f"   3. Keep your MICROPHONE as:")
-    print(f"      → {interceptor.default_source or 'default microphone'}")
+
+    if current_platform == "linux":
+        print("\n📝 Setup Instructions:")
+        speaker_src = interceptor.backend.get_speaker_source()
+        mic_src = interceptor.backend.get_mic_source()
+        print(f"   1. Open your meeting app (Zoom, Discord, Meet, etc.)")
+        print(f"   2. Set the app's SPEAKER/OUTPUT to:")
+        print(f"      → Virtual_Speaker_Interceptor")
+        print(f"   3. Keep your MICROPHONE as:")
+        print(f"      → {mic_src or 'default microphone'}")
+    elif current_platform == "macos":
+        print("\n📝 Setup Instructions (macOS):")
+        print(f"   1. BlackHole をインストール: brew install blackhole-2ch")
+        print(f"   2. Audio MIDI Setup でマルチ出力デバイスを作成")
+        print(f"      (内蔵出力 + BlackHole 2ch)")
+        print(f"   3. システム出力をマルチ出力デバイスに設定")
+    elif current_platform == "windows":
+        print("\n📝 Setup Instructions (Windows):")
+        print(f"   1. サウンド設定で「ステレオミキサー」を有効化")
+        print(f"      または VB-Audio Virtual Cable をインストール")
+        print(f"   2. 会議アプリのスピーカー出力を仮想デバイスに設定")
+
     print(f"\n💾 Recording:")
     print(f"   - Location: {interceptor.tmp_dir.absolute()}")
     print(f"   - Format: 10-second WAV chunks")
     print(f"   - Mode: {'Transcription + Recording' if interceptor.transcribe_enabled else 'Recording only'}")
-    if interceptor.target_sink:
-        print(f"   - Loopback: {interceptor.target_sink}")
-    else:
-        print(f"   - Loopback: Default System Output")
     print("\n⚠️  Press Ctrl+C to stop recording and cleanup")
     print("="*60 + "\n")
 
+
 def main():
-    # 引数から出力ディレクトリを取得
     tmp_dir = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else "./tmp"
-    
-    print("\n=== Audio Interceptor Setup ===")
-    
-    # モード選択
+
+    print(f"\n=== Audio Interceptor Setup (Platform: {get_platform()}) ===")
+
     transcribe_enabled = select_mode()
-    
-    # スピーカー選択
     target_sink = select_sink()
-    
-    # インターセプターを初期化
+
     interceptor = AudioInterceptor(tmp_dir, target_sink, transcribe_enabled)
-    
-    # シグナルハンドラを設定
+
     def shutdown_handler(sig, frame):
         print("\n\n⚠️  Shutdown signal received...")
         interceptor.cleanup()
         sys.exit(0)
-    
+
     signal.signal(signal.SIGINT, shutdown_handler)
     signal.signal(signal.SIGTERM, shutdown_handler)
-    
+
     try:
-        # セットアップ
         interceptor.setup()
-        
-        # インターセプション開始
         interceptor.start_intercepting()
-        
-        # 使い方を表示
         print_instructions(interceptor)
-        
-        # メインスレッドを維持
+
         while True:
             time.sleep(1)
-            
+
     except KeyboardInterrupt:
         pass
     except Exception as e:
@@ -468,6 +702,7 @@ def main():
         traceback.print_exc()
     finally:
         interceptor.cleanup()
+
 
 if __name__ == "__main__":
     main()

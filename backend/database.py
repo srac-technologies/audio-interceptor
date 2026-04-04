@@ -84,6 +84,41 @@ def init_db():
         value TEXT
     )
     ''')
+
+    # リサーチソース管理テーブル
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS research_sources (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        enabled INTEGER DEFAULT 1,
+        priority INTEGER DEFAULT 5,
+        timeout REAL DEFAULT 5.0,
+        config TEXT DEFAULT '{}',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+    # source_type: "builtin" | "custom_api" | "shell_command"
+    # config: JSON文字列 (APIキー、エンドポイント、ヘッダー、コマンド等)
+
+    # 組み込みソースの初期データ投入
+    cursor.execute('SELECT count(*) FROM research_sources')
+    if cursor.fetchone()[0] == 0:
+        builtin_sources = [
+            ('LLM', 'builtin', 1, 1, 5.0, '{"description": "OpenAI GPT-4o-miniによる即答"}'),
+            ('BraveSearch', 'builtin', 0, 2, 3.0, '{"description": "Brave Search APIによるWeb検索", "env_key": "BRAVE_API_KEY"}'),
+            ('Tavily', 'builtin', 0, 2, 5.0, '{"description": "Tavily AI検索API", "env_key": "TAVILY_API_KEY"}'),
+            ('Perplexity', 'builtin', 0, 2, 8.0, '{"description": "Perplexity APIによるAI検索", "env_key": "PERPLEXITY_API_KEY"}'),
+            ('GoogleSearch', 'builtin', 0, 3, 5.0, '{"description": "Google Custom Search API", "env_key": "GOOGLE_CSE_API_KEY", "cx_env_key": "GOOGLE_CSE_CX"}'),
+            ('LightPanda', 'builtin', 0, 3, 10.0, '{"description": "LightPanda agentic browser", "env_key": "LIGHTPANDA_API_KEY"}'),
+            ('LimitlessAPI', 'builtin', 0, 4, 5.0, '{"description": "Limitless APIによる文脈検索", "env_key": "LIMITLESS_API_KEY"}'),
+            ('gogCLI', 'builtin', 0, 5, 10.0, '{"description": "gog CLIによる検索"}'),
+        ]
+        for name, stype, enabled, priority, timeout, config in builtin_sources:
+            cursor.execute(
+                'INSERT INTO research_sources (name, source_type, enabled, priority, timeout, config) VALUES (?, ?, ?, ?, ?, ?)',
+                (name, stype, enabled, priority, timeout, config)
+            )
     
     # 初期設定の投入
     default_settings = {
@@ -99,6 +134,15 @@ def init_db():
         'research_buffer_size': '2',  # バッファサイズ（発言数）
         'research_target_sources': 'speaker',  # speaker, mic, both
         'research_transcription_refinement': 'false',  # 文字起こし精度向上
+        # 文字起こしエンジン設定
+        'transcription_engine': 'faster-whisper',  # faster-whisper, openai-whisper, google-speech, kotoba-whisper, azure-speech
+        'transcription_model': 'small',  # エンジン固有のモデル名
+        'transcription_language': 'ja',  # ja, en, auto
+        # 精度向上LLMプロバイダ設定
+        'refinement_provider': 'openai',  # openai, claude, gemini, ollama
+        'refinement_model': '',  # プロバイダ固有のモデル名（空=デフォルト）
+        # 専門用語辞書
+        'custom_dictionary': '',  # 改行区切りの用語リスト
     }
     
     for key, value in default_settings.items():
@@ -302,6 +346,65 @@ def save_summary(session_id: int, summary_text: str):
     cursor.execute('UPDATE sessions SET summary = ? WHERE id = ?', (summary_text, session_id))
     conn.commit()
     conn.close()
+
+# --- Research Source Management ---
+
+def get_research_sources(enabled_only: bool = False) -> List[Dict[str, Any]]:
+    """リサーチソース一覧を取得"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if enabled_only:
+        cursor.execute('SELECT * FROM research_sources WHERE enabled = 1 ORDER BY priority')
+    else:
+        cursor.execute('SELECT * FROM research_sources ORDER BY priority')
+    sources = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return sources
+
+def get_research_source(source_id: int) -> Optional[Dict[str, Any]]:
+    """リサーチソースを1件取得"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM research_sources WHERE id = ?', (source_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def create_research_source(name: str, source_type: str, priority: int = 5,
+                           timeout: float = 5.0, config: str = '{}') -> int:
+    """リサーチソースを追加"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT INTO research_sources (name, source_type, enabled, priority, timeout, config) VALUES (?, ?, 1, ?, ?, ?)',
+        (name, source_type, priority, timeout, config)
+    )
+    new_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return new_id
+
+def update_research_source(source_id: int, **kwargs):
+    """リサーチソースを更新（キーワード引数で指定されたフィールドのみ更新）"""
+    allowed_fields = {'name', 'source_type', 'enabled', 'priority', 'timeout', 'config'}
+    updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
+    if not updates:
+        return
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    set_clause = ', '.join(f'{k} = ?' for k in updates)
+    values = list(updates.values()) + [source_id]
+    cursor.execute(f'UPDATE research_sources SET {set_clause} WHERE id = ?', values)
+    conn.commit()
+    conn.close()
+
+def delete_research_source(source_id: int):
+    """リサーチソースを削除"""
+    conn = get_db_connection()
+    conn.execute('DELETE FROM research_sources WHERE id = ?', (source_id,))
+    conn.commit()
+    conn.close()
+
 
 if __name__ == "__main__":
     init_db()

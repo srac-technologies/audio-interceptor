@@ -513,6 +513,11 @@
             <input type="text" id="meetingTitle" placeholder="例: 週次定例、営業商談、採用面接..." style="flex: 1;">
             <button id="fetchCalendarBtn" style="width: auto; padding: 8px 12px; font-size: 0.85rem; background: rgba(100, 150, 255, 0.2); color: #6496ff; border: 1px solid #6496ff;">📅 カレンダー</button>
           </div>
+          <div id="calendarSwitcher" style="display: none; margin-top: 6px; align-items: center; gap: 8px;">
+            <button id="calPrevBtn" style="width: 28px; height: 28px; padding: 0; font-size: 0.9rem; background: rgba(100, 150, 255, 0.15); color: #6496ff; border: 1px solid #6496ff; border-radius: 4px; cursor: pointer;">&lt;</button>
+            <span id="calIndicator" style="font-size: 0.8rem; color: #888; min-width: 32px; text-align: center;">1/1</span>
+            <button id="calNextBtn" style="width: 28px; height: 28px; padding: 0; font-size: 0.9rem; background: rgba(100, 150, 255, 0.15); color: #6496ff; border: 1px solid #6496ff; border-radius: 4px; cursor: pointer;">&gt;</button>
+          </div>
         </div>
 
         <div class="form-group">
@@ -591,7 +596,10 @@
       
       <div class="tabs">
           <div class="tab active" data-tab="general">一般設定</div>
+          <div class="tab" data-tab="research-sources">リサーチソース</div>
+          <div class="tab" data-tab="transcription">文字起こし</div>
           <div class="tab" data-tab="meeting-types">会議種別・プロンプト</div>
+          <div class="tab" data-tab="plugins">プラグイン</div>
       </div>
 
       <!-- 一般設定タブ -->
@@ -690,6 +698,155 @@
           </div>
       </div>
 
+      <!-- リサーチソースタブ -->
+      <div id="tab-research-sources" class="tab-content">
+          <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+              <h3 style="color: #00ffaa;">リサーチソース管理</h3>
+              <button id="addSourceBtn" style="width: auto; padding: 6px 16px; background: #48bb78; color: white;">+ ソース追加</button>
+          </div>
+          <div style="font-size: 0.8rem; color: #888; margin-bottom: 15px;">
+              ソースの有効/無効、優先度（1=最高〜10=最低）を設定できます。組み込みソースは環境変数でAPIキーを設定してください。
+          </div>
+          <div id="researchSourceList" style="max-height: 400px; overflow-y: auto;"></div>
+
+          <!-- ソース追加フォーム（非表示） -->
+          <div id="addSourceForm" style="display: none; margin-top: 15px; padding: 15px; background: rgba(20,25,30,0.8); border: 1px solid rgba(0,255,170,0.2); border-radius: 6px;">
+              <h4 style="margin-bottom: 12px; color: #ffc864;">新しいリサーチソースを追加</h4>
+              <div class="form-group">
+                  <label>ソース名</label>
+                  <input type="text" id="newSourceName" placeholder="例: My Custom API">
+              </div>
+              <div class="form-group">
+                  <label>ソース種別</label>
+                  <select id="newSourceType" onchange="toggleSourceConfigFields()">
+                      <option value="custom_api">カスタムAPI</option>
+                      <option value="shell_command">シェルコマンド</option>
+                  </select>
+              </div>
+              <div class="form-group">
+                  <label>優先度 (1=最高, 10=最低)</label>
+                  <input type="number" id="newSourcePriority" min="1" max="10" value="5">
+              </div>
+              <div class="form-group">
+                  <label>タイムアウト（秒）</label>
+                  <input type="number" id="newSourceTimeout" min="1" max="60" step="0.5" value="5">
+              </div>
+
+              <!-- カスタムAPI設定 -->
+              <div id="customApiFields">
+                  <div class="form-group">
+                      <label>HTTPメソッド</label>
+                      <select id="newSourceMethod">
+                          <option value="GET">GET</option>
+                          <option value="POST">POST</option>
+                      </select>
+                  </div>
+                  <div class="form-group">
+                      <label>エンドポイントURL</label>
+                      <input type="text" id="newSourceEndpoint" placeholder="https://api.example.com/search?q={entity}">
+                      <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ {entity} がリサーチ対象に置換されます</div>
+                  </div>
+                  <div class="form-group">
+                      <label>ヘッダー（JSON）</label>
+                      <input type="text" id="newSourceHeaders" placeholder='{"Authorization": "Bearer xxx"}'>
+                  </div>
+                  <div class="form-group">
+                      <label>リクエストボディテンプレート（POST時、JSON）</label>
+                      <textarea id="newSourceBody" style="height: 60px; font-family: monospace;" placeholder='{"query": "{entity}"}'></textarea>
+                  </div>
+                  <div class="form-group">
+                      <label>レスポンスマッピング（JSONパス）</label>
+                      <input type="text" id="newSourceMapping" placeholder="data.result" value="content">
+                      <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ ドット区切りでレスポンスJSONから値を抽出（例: data.items.0.text）</div>
+                  </div>
+              </div>
+
+              <!-- シェルコマンド設定 -->
+              <div id="shellCommandFields" style="display: none;">
+                  <div class="form-group">
+                      <label>コマンドテンプレート</label>
+                      <input type="text" id="newSourceCommand" placeholder="curl -s 'https://example.com/api?q={entity}'">
+                      <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ {entity} がリサーチ対象に置換されます。stdout が結果として使用されます</div>
+                  </div>
+              </div>
+
+              <div style="display: flex; gap: 10px; margin-top: 15px;">
+                  <button id="saveSourceBtn" style="background: #48bb78; color: white; width: auto; padding: 8px 20px;">追加</button>
+                  <button id="cancelSourceBtn" style="background: rgba(255,255,255,0.1); color: #888; width: auto; padding: 8px 20px;">キャンセル</button>
+              </div>
+          </div>
+      </div>
+
+      <!-- 文字起こしタブ -->
+      <div id="tab-transcription" class="tab-content">
+          <h3 style="margin-bottom: 15px; color: #00ffaa;">文字起こしエンジン</h3>
+
+          <div class="form-group">
+              <label>エンジン</label>
+              <select id="settingTranscriptionEngine">
+                  <option value="faster-whisper">faster-whisper (ローカル)</option>
+                  <option value="openai-whisper">OpenAI Whisper API</option>
+                  <option value="google-speech">Google Cloud Speech-to-Text</option>
+                  <option value="kotoba-whisper">Kotoba-Whisper (日本語特化)</option>
+                  <option value="azure-speech">Azure Speech Services</option>
+              </select>
+              <div id="engineAvailability" style="font-size: 0.8rem; margin-top: 4px;"></div>
+          </div>
+
+          <div class="form-group">
+              <label>モデル</label>
+              <input type="text" id="settingTranscriptionModel" placeholder="small (faster-whisper) / whisper-1 (OpenAI)">
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ faster-whisper: tiny, base, small, medium, large-v3</div>
+          </div>
+
+          <div class="form-group">
+              <label>言語</label>
+              <select id="settingTranscriptionLanguage">
+                  <option value="ja">日本語</option>
+                  <option value="en">英語</option>
+                  <option value="auto">自動検出</option>
+              </select>
+          </div>
+
+          <hr style="margin: 20px 0; border: none; border-top: 1px solid rgba(255,255,255,0.1);">
+
+          <h3 style="margin-bottom: 15px; color: #00ffaa;">LLM精度向上パイプライン</h3>
+
+          <div class="form-group">
+              <label class="checkbox-group">
+                  <input type="checkbox" id="settingResearchRefinement2">
+                  <span>文字起こし精度向上を有効化（NER前にLLMで修正）</span>
+              </label>
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ 処理時間+1-2秒。誤変換修正、固有名詞の正確化など</div>
+          </div>
+
+          <div class="form-group">
+              <label>精度向上LLMプロバイダ</label>
+              <select id="settingRefinementProvider">
+                  <option value="openai">OpenAI (GPT-4o-mini)</option>
+                  <option value="claude">Claude (Haiku)</option>
+                  <option value="gemini">Gemini (Flash)</option>
+                  <option value="ollama">Ollama (ローカルLLM)</option>
+              </select>
+              <div id="providerAvailability" style="font-size: 0.8rem; margin-top: 4px;"></div>
+          </div>
+
+          <div class="form-group">
+              <label>精度向上モデル（オプション）</label>
+              <input type="text" id="settingRefinementModel" placeholder="空欄=デフォルト (例: gpt-4o-mini, claude-haiku-4-5-20251001)">
+          </div>
+
+          <div class="form-group">
+              <label>専門用語辞書</label>
+              <textarea id="settingCustomDictionary" style="height: 100px; font-family: monospace;" placeholder="1行1用語で入力（LLMが優先的に使用）&#10;例:&#10;Kubernetes&#10;FastAPI&#10;PipeWire"></textarea>
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ LLMが文字起こし修正時に参照する用語リスト</div>
+          </div>
+
+          <div style="margin-top: 20px; text-align: right;">
+              <button id="saveTranscriptionSettingsBtn" style="background: #48bb78; color: white; width: auto; padding: 10px 30px;">設定を保存</button>
+          </div>
+      </div>
+
       <!-- 会議種別タブ -->
       <div id="tab-meeting-types" class="tab-content">
           <div style="display: flex; flex: 1; gap: 20px; min-height: 0;">
@@ -712,6 +869,55 @@
             </div>
           </div>
       </div>
+
+      <!-- プラグインタブ -->
+      <div id="tab-plugins" class="tab-content">
+          <div style="margin-bottom: 15px;">
+              <p style="font-size: 0.85rem; color: #888; margin-bottom: 10px;">
+                  外部プログラムがMeeting Assistantのイベント（文字起こし、リサーチ結果等）を購読できます。
+              </p>
+          </div>
+
+          <div id="pluginList" style="flex: 1; overflow-y: auto; margin-bottom: 15px;"></div>
+
+          <hr style="margin: 15px 0; border: none; border-top: 1px solid rgba(255,255,255,0.1);">
+
+          <h4 style="margin-bottom: 10px; color: #00ffaa;">プラグイン追加</h4>
+          <div class="form-group">
+              <label>名前</label>
+              <input type="text" id="pluginName" placeholder="my-plugin">
+          </div>
+          <div class="form-group">
+              <label>プロトコル</label>
+              <select id="pluginProtocol">
+                  <option value="websocket">WebSocket（外部プロセスが /ws/plugins に接続）</option>
+                  <option value="webhook">HTTP Webhook（URLにPOST）</option>
+                  <option value="pipe">Shell Pipe（プロセスのstdinにJSON Lines）</option>
+                  <option value="exec">プロセス起動（イベント毎にコマンド実行）</option>
+              </select>
+          </div>
+          <div class="form-group" id="pluginEndpointGroup">
+              <label>エンドポイント / コマンド</label>
+              <input type="text" id="pluginEndpoint" placeholder="http://localhost:9999/webhook or /path/to/command">
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;" id="pluginEndpointHint">
+                  WebSocketプロトコルの場合、外部プロセスが ws://localhost:8000/ws/plugins に接続します
+              </div>
+          </div>
+          <div class="form-group">
+              <label>購読イベント（空欄で全イベント）</label>
+              <div id="pluginEventCheckboxes" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 5px;">
+                  <label class="checkbox-group" style="flex: 0 0 auto;"><input type="checkbox" value="transcription"><span>transcription</span></label>
+                  <label class="checkbox-group" style="flex: 0 0 auto;"><input type="checkbox" value="research_result"><span>research_result</span></label>
+                  <label class="checkbox-group" style="flex: 0 0 auto;"><input type="checkbox" value="session_start"><span>session_start</span></label>
+                  <label class="checkbox-group" style="flex: 0 0 auto;"><input type="checkbox" value="session_end"><span>session_end</span></label>
+                  <label class="checkbox-group" style="flex: 0 0 auto;"><input type="checkbox" value="meeting_detected"><span>meeting_detected</span></label>
+                  <label class="checkbox-group" style="flex: 0 0 auto;"><input type="checkbox" value="summary_generated"><span>summary_generated</span></label>
+              </div>
+          </div>
+          <div style="text-align: right;">
+              <button id="addPluginBtn" style="background: #48bb78; color: white; width: auto; padding: 10px 30px;">追加</button>
+          </div>
+      </div>
     </div>
   </div>
 
@@ -722,6 +928,8 @@
     let ws = null;
     let selectedTypeId = null;
     let micMuted = false;
+    let calendarCandidates = [];
+    let calendarCurrentIndex = 0;
 
     const statusIndicator = document.getElementById('statusIndicator');
     const statusText = document.getElementById('statusText');
@@ -945,21 +1153,54 @@
       }
     }
 
+    // カレンダー候補の切り替えUI更新
+    function updateCalendarSwitcher() {
+      const switcher = document.getElementById('calendarSwitcher');
+      const indicator = document.getElementById('calIndicator');
+
+      if (calendarCandidates.length > 1) {
+        switcher.style.display = 'flex';
+        indicator.textContent = `${calendarCurrentIndex + 1}/${calendarCandidates.length}`;
+      } else {
+        switcher.style.display = 'none';
+      }
+    }
+
+    // カレンダー候補を選択してタイトル欄に反映
+    function selectCalendarCandidate(index) {
+      if (calendarCandidates.length === 0) return;
+      calendarCurrentIndex = ((index % calendarCandidates.length) + calendarCandidates.length) % calendarCandidates.length;
+      meetingTitle.value = calendarCandidates[calendarCurrentIndex].summary;
+      updateCalendarSwitcher();
+    }
+
+    // カレンダー候補を取得する共通関数
+    async function fetchCalendarCandidates() {
+      const response = await fetch('http://localhost:8000/calendar/events');
+      const data = await response.json();
+
+      if (data.success && data.events && data.events.length > 0) {
+        calendarCandidates = data.events;
+        calendarCurrentIndex = 0;
+        return true;
+      }
+      calendarCandidates = [];
+      calendarCurrentIndex = 0;
+      return false;
+    }
+
     // カレンダーから自動的にタイトルを取得（タイトル欄が空の場合のみ）
     async function autoFetchCalendarTitle() {
-      if (meetingTitle.value) return; // すでに入力済みならスキップ
-      
+      if (meetingTitle.value) return;
+
       try {
-        const response = await fetch('http://localhost:8000/calendar/current');
-        const data = await response.json();
-        
-        if (data.success && data.event && !meetingTitle.value) {
-          meetingTitle.value = data.event.summary;
-          meetingTitle.style.borderColor = '#00ffaa'; // 緑枠で視覚的に通知
-          setTimeout(() => {
-            meetingTitle.style.borderColor = '';
-          }, 2000);
-          console.log('📅 Auto-filled title from calendar:', data.event.summary);
+        const found = await fetchCalendarCandidates();
+        if (found && !meetingTitle.value) {
+          meetingTitle.value = calendarCandidates[0].summary;
+          meetingTitle.style.borderColor = '#00ffaa';
+          setTimeout(() => { meetingTitle.style.borderColor = ''; }, 2000);
+          updateCalendarSwitcher();
+          console.log('📅 Auto-filled title from calendar:', calendarCandidates[0].summary);
         }
       } catch (error) {
         console.error('Auto-fetch calendar failed:', error);
@@ -970,31 +1211,37 @@
     document.getElementById('fetchCalendarBtn').addEventListener('click', async () => {
       const btn = document.getElementById('fetchCalendarBtn');
       const originalText = btn.textContent;
-      
+
       try {
         btn.textContent = '⏳ 取得中...';
         btn.disabled = true;
-        
-        const response = await fetch('http://localhost:8000/calendar/current');
-        const data = await response.json();
-        
-        if (data.success && data.event) {
-          meetingTitle.value = data.event.summary;
+
+        const found = await fetchCalendarCandidates();
+        if (found) {
+          selectCalendarCandidate(0);
+          updateCalendarSwitcher();
           btn.textContent = '✅ 取得完了';
-          setTimeout(() => {
-            btn.textContent = originalText;
-          }, 2000);
+          setTimeout(() => { btn.textContent = originalText; }, 2000);
         } else {
           alert('現在時刻付近にカレンダーイベントが見つかりませんでした');
           btn.textContent = originalText;
+          updateCalendarSwitcher();
         }
       } catch (error) {
-        console.error('Failed to fetch calendar event:', error);
+        console.error('Failed to fetch calendar events:', error);
         alert('カレンダー取得に失敗しました');
         btn.textContent = originalText;
       } finally {
         btn.disabled = false;
       }
+    });
+
+    // 切り替えボタン
+    document.getElementById('calPrevBtn').addEventListener('click', () => {
+      selectCalendarCandidate(calendarCurrentIndex - 1);
+    });
+    document.getElementById('calNextBtn').addEventListener('click', () => {
+      selectCalendarCandidate(calendarCurrentIndex + 1);
     });
 
     // --- モーダル制御 ---
@@ -1025,6 +1272,7 @@
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             tab.classList.add('active');
             document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+            if (tab.dataset.tab === 'research-sources') renderResearchSources();
         });
     });
 
@@ -1189,12 +1437,12 @@
         const res = await fetch('http://localhost:8000/settings');
         const data = await res.json();
         const s = data.settings;
-        
+
         document.getElementById('settingAutoSummary').checked = s.auto_summary_enabled === 'true';
         document.getElementById('settingSaveDir').value = s.save_dir || '';
         document.getElementById('settingCalendarId').value = s.calendar_id || 'primary';
         document.getElementById('settingSummaryPrompt').value = s.summary_prompt || '';
-        
+
         // リサーチ機能設定
         document.getElementById('settingResearchEnabled').checked = s.research_enabled === 'true';
         document.getElementById('settingResearchMethod').value = s.research_method || 'llm';
@@ -1204,6 +1452,49 @@
         document.getElementById('settingNerPrompt').value = s.ner_prompt || '';
         document.getElementById('settingSlackBotToken').value = s.slack_bot_token || '';
         document.getElementById('settingSlackChannel').value = s.slack_channel || '';
+
+        // 文字起こしエンジン設定
+        document.getElementById('settingTranscriptionEngine').value = s.transcription_engine || 'faster-whisper';
+        document.getElementById('settingTranscriptionModel').value = s.transcription_model || 'small';
+        document.getElementById('settingTranscriptionLanguage').value = s.transcription_language || 'ja';
+
+        // 精度向上設定
+        document.getElementById('settingResearchRefinement2').checked = s.research_transcription_refinement === 'true';
+        document.getElementById('settingRefinementProvider').value = s.refinement_provider || 'openai';
+        document.getElementById('settingRefinementModel').value = s.refinement_model || '';
+        document.getElementById('settingCustomDictionary').value = s.custom_dictionary || '';
+
+        // エンジン・プロバイダの利用可否を表示
+        loadEngineAvailability();
+        loadProviderAvailability();
+    }
+
+    async function loadEngineAvailability() {
+        try {
+            const res = await fetch('http://localhost:8000/transcription/engines');
+            const data = await res.json();
+            const el = document.getElementById('engineAvailability');
+            const items = data.engines.map(e => {
+                const icon = e.available ? '✅' : '❌';
+                return `${icon} ${e.id}`;
+            });
+            el.innerHTML = items.join(' / ');
+            el.style.color = '#888';
+        } catch(e) { /* ignore */ }
+    }
+
+    async function loadProviderAvailability() {
+        try {
+            const res = await fetch('http://localhost:8000/transcription/refinement-providers');
+            const data = await res.json();
+            const el = document.getElementById('providerAvailability');
+            const items = data.providers.map(p => {
+                const icon = p.available ? '✅' : '❌';
+                return `${icon} ${p.id}`;
+            });
+            el.innerHTML = items.join(' / ');
+            el.style.color = '#888';
+        } catch(e) { /* ignore */ }
     }
 
     document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
@@ -1221,13 +1512,35 @@
             slack_bot_token: document.getElementById('settingSlackBotToken').value,
             slack_channel: document.getElementById('settingSlackChannel').value
         };
-        
+
         await fetch('http://localhost:8000/settings', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({settings})
         });
         alert('設定を保存しました！\n\nリサーチ機能の設定は録音中でも即座に反映されます。');
+    });
+
+    document.getElementById('saveTranscriptionSettingsBtn').addEventListener('click', async () => {
+        const refinementEnabled = document.getElementById('settingResearchRefinement2').checked;
+        const settings = {
+            transcription_engine: document.getElementById('settingTranscriptionEngine').value,
+            transcription_model: document.getElementById('settingTranscriptionModel').value,
+            transcription_language: document.getElementById('settingTranscriptionLanguage').value,
+            research_transcription_refinement: refinementEnabled ? 'true' : 'false',
+            refinement_provider: document.getElementById('settingRefinementProvider').value,
+            refinement_model: document.getElementById('settingRefinementModel').value,
+            custom_dictionary: document.getElementById('settingCustomDictionary').value,
+        };
+
+        await fetch('http://localhost:8000/settings', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({settings})
+        });
+        // 一般タブ側のチェックボックスも同期
+        document.getElementById('settingResearchRefinement').checked = refinementEnabled;
+        alert('文字起こし設定を保存しました！\n\nエンジン変更は次回録音開始時から反映されます。');
     });
 
     // 会議種別管理（簡易版）
@@ -1330,6 +1643,231 @@
         document.getElementById('newTrigger').value = '';
         document.getElementById('newAction').value = '';
         selectType({id: selectedTypeId, name: document.getElementById('promptsHeader').textContent.split(' ')[0]});
+    });
+
+    // --- リサーチソース管理 ---
+    async function renderResearchSources() {
+        const res = await fetch('http://localhost:8000/research-sources');
+        const data = await res.json();
+        const list = document.getElementById('researchSourceList');
+        list.innerHTML = '';
+
+        data.sources.forEach(s => {
+            const config = JSON.parse(s.config || '{}');
+            const isBuiltin = s.source_type === 'builtin';
+            const typeLabel = isBuiltin ? '組込' : (s.source_type === 'custom_api' ? 'API' : 'CMD');
+            const typeBg = isBuiltin ? 'rgba(0,255,170,0.15)' : (s.source_type === 'custom_api' ? 'rgba(100,150,255,0.15)' : 'rgba(255,200,100,0.15)');
+            const typeColor = isBuiltin ? '#00ffaa' : (s.source_type === 'custom_api' ? '#6496ff' : '#ffc864');
+
+            const item = document.createElement('div');
+            item.style.cssText = 'display:flex; align-items:center; gap:10px; padding:10px 12px; margin-bottom:6px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:6px;';
+
+            item.innerHTML = `
+                <label style="display:flex; align-items:center; cursor:pointer; margin:0;">
+                    <input type="checkbox" ${s.enabled ? 'checked' : ''} onchange="toggleSource(${s.id}, this.checked)" style="margin:0;">
+                </label>
+                <span style="background:${typeBg}; color:${typeColor}; padding:2px 8px; border-radius:3px; font-size:0.7rem; font-weight:bold; min-width:35px; text-align:center;">${typeLabel}</span>
+                <span style="flex:1; font-weight:500; opacity:${s.enabled ? '1' : '0.5'};">${s.name}</span>
+                <span style="font-size:0.75rem; color:#888;">${config.description || config.endpoint || config.command || ''}</span>
+                <select onchange="updateSourcePriority(${s.id}, this.value)" style="width:auto; padding:3px 6px; font-size:0.75rem; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:#e0e0e0; border-radius:3px;">
+                    ${[1,2,3,4,5,6,7,8,9,10].map(p => `<option value="${p}" ${s.priority === p ? 'selected' : ''}>P${p}</option>`).join('')}
+                </select>
+                ${!isBuiltin ? `<button onclick="deleteSource(${s.id})" style="width:auto; padding:3px 8px; background:#e53e3e; font-size:0.75rem;">削除</button>` : ''}
+            `;
+            list.appendChild(item);
+        });
+    }
+
+    window.toggleSource = async (id, enabled) => {
+        await fetch(`http://localhost:8000/research-sources/${id}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({enabled: enabled ? 1 : 0})
+        });
+        renderResearchSources();
+    };
+
+    window.updateSourcePriority = async (id, priority) => {
+        await fetch(`http://localhost:8000/research-sources/${id}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({priority: parseInt(priority)})
+        });
+    };
+
+    window.deleteSource = async (id) => {
+        if (!confirm('このリサーチソースを削除しますか？')) return;
+        await fetch(`http://localhost:8000/research-sources/${id}`, {method: 'DELETE'});
+        renderResearchSources();
+    };
+
+    window.toggleSourceConfigFields = () => {
+        const type = document.getElementById('newSourceType').value;
+        document.getElementById('customApiFields').style.display = type === 'custom_api' ? 'block' : 'none';
+        document.getElementById('shellCommandFields').style.display = type === 'shell_command' ? 'block' : 'none';
+    };
+
+    document.getElementById('addSourceBtn').addEventListener('click', () => {
+        document.getElementById('addSourceForm').style.display = 'block';
+    });
+
+    document.getElementById('cancelSourceBtn').addEventListener('click', () => {
+        document.getElementById('addSourceForm').style.display = 'none';
+    });
+
+    document.getElementById('saveSourceBtn').addEventListener('click', async () => {
+        const name = document.getElementById('newSourceName').value.trim();
+        const sourceType = document.getElementById('newSourceType').value;
+        const priority = parseInt(document.getElementById('newSourcePriority').value) || 5;
+        const timeout = parseFloat(document.getElementById('newSourceTimeout').value) || 5.0;
+
+        if (!name) { alert('ソース名を入力してください'); return; }
+
+        let config = {};
+
+        if (sourceType === 'custom_api') {
+            const endpoint = document.getElementById('newSourceEndpoint').value.trim();
+            if (!endpoint) { alert('エンドポイントURLを入力してください'); return; }
+            config = {
+                endpoint: endpoint,
+                method: document.getElementById('newSourceMethod').value,
+                headers: (() => { try { return JSON.parse(document.getElementById('newSourceHeaders').value || '{}'); } catch(e) { return {}; } })(),
+                body_template: document.getElementById('newSourceBody').value || null,
+                response_mapping: document.getElementById('newSourceMapping').value || 'content',
+                description: `Custom API: ${endpoint.substring(0, 50)}`
+            };
+        } else if (sourceType === 'shell_command') {
+            const command = document.getElementById('newSourceCommand').value.trim();
+            if (!command) { alert('コマンドを入力してください'); return; }
+            config = {
+                command: command,
+                description: `Shell: ${command.substring(0, 50)}`
+            };
+        }
+
+        await fetch('http://localhost:8000/research-sources', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                name: name,
+                source_type: sourceType,
+                priority: priority,
+                timeout: timeout,
+                config: JSON.stringify(config)
+            })
+        });
+
+        // フォームリセット
+        document.getElementById('newSourceName').value = '';
+        document.getElementById('newSourceEndpoint').value = '';
+        document.getElementById('newSourceHeaders').value = '';
+        document.getElementById('newSourceBody').value = '';
+        document.getElementById('newSourceCommand').value = '';
+        document.getElementById('addSourceForm').style.display = 'none';
+        renderResearchSources();
+    });
+
+    // --- プラグイン機能 ---
+
+    async function loadPlugins() {
+        try {
+            const res = await fetch('http://localhost:8000/plugins');
+            const data = await res.json();
+            renderPluginList(data.plugins || []);
+        } catch (e) {
+            console.error('Failed to load plugins:', e);
+        }
+    }
+
+    function renderPluginList(plugins) {
+        const container = document.getElementById('pluginList');
+        if (plugins.length === 0) {
+            container.innerHTML = '<div style="color: #666; padding: 20px; text-align: center;">登録済みプラグインはありません</div>';
+            return;
+        }
+        container.innerHTML = plugins.map(p => {
+            const statusColor = p.enabled ? '#48bb78' : '#666';
+            const statusLabel = p.enabled ? 'ON' : 'OFF';
+            const eventsLabel = p.events.length === 0 ? '全イベント' : p.events.join(', ');
+            return `
+                <div style="display: flex; align-items: center; gap: 10px; padding: 10px; margin-bottom: 8px; background: rgba(20,25,30,0.6); border: 1px solid rgba(255,255,255,0.05); border-radius: 4px;">
+                    <div style="flex: 1;">
+                        <div style="font-weight: 500; color: #e0e0e0;">${p.name}</div>
+                        <div style="font-size: 0.8rem; color: #888; margin-top: 2px;">${p.protocol}${p.endpoint ? ' → ' + p.endpoint : ''}</div>
+                        <div style="font-size: 0.75rem; color: #666; margin-top: 2px;">Events: ${eventsLabel}</div>
+                    </div>
+                    <button onclick="togglePlugin('${p.name}', ${!p.enabled})" style="background: ${statusColor}22; color: ${statusColor}; border: 1px solid ${statusColor}; padding: 4px 12px; border-radius: 3px; cursor: pointer; font-size: 0.8rem;">${statusLabel}</button>
+                    <button onclick="deletePlugin('${p.name}')" style="background: rgba(255,100,100,0.1); color: #ff6464; border: 1px solid #ff6464; padding: 4px 10px; border-radius: 3px; cursor: pointer; font-size: 0.8rem;">削除</button>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function togglePlugin(name, enabled) {
+        await fetch(`http://localhost:8000/plugins/${encodeURIComponent(name)}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({enabled})
+        });
+        loadPlugins();
+    }
+
+    async function deletePlugin(name) {
+        if (!confirm(`プラグイン "${name}" を削除しますか？`)) return;
+        await fetch(`http://localhost:8000/plugins/${encodeURIComponent(name)}`, {method: 'DELETE'});
+        loadPlugins();
+    }
+
+    document.getElementById('addPluginBtn').addEventListener('click', async () => {
+        const name = document.getElementById('pluginName').value.trim();
+        if (!name) { alert('名前を入力してください'); return; }
+
+        const protocol = document.getElementById('pluginProtocol').value;
+        const endpoint = document.getElementById('pluginEndpoint').value.trim();
+        const eventCheckboxes = document.querySelectorAll('#pluginEventCheckboxes input[type=checkbox]:checked');
+        const events = Array.from(eventCheckboxes).map(cb => cb.value);
+
+        await fetch('http://localhost:8000/plugins', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name, protocol, endpoint, events, enabled: true})
+        });
+
+        document.getElementById('pluginName').value = '';
+        document.getElementById('pluginEndpoint').value = '';
+        document.querySelectorAll('#pluginEventCheckboxes input[type=checkbox]').forEach(cb => cb.checked = false);
+        loadPlugins();
+    });
+
+    // プロトコル変更時のヒント更新
+    document.getElementById('pluginProtocol').addEventListener('change', (e) => {
+        const hint = document.getElementById('pluginEndpointHint');
+        const endpointInput = document.getElementById('pluginEndpoint');
+        switch (e.target.value) {
+            case 'websocket':
+                hint.textContent = 'WebSocketプロトコルの場合、外部プロセスが ws://localhost:8000/ws/plugins に接続します';
+                endpointInput.placeholder = '（不要 — 外部から接続）';
+                break;
+            case 'webhook':
+                hint.textContent = 'イベント発生時にこのURLにPOSTリクエストを送信します';
+                endpointInput.placeholder = 'http://localhost:9999/webhook';
+                break;
+            case 'pipe':
+                hint.textContent = 'このコマンドを起動し、stdinにJSON Lines形式でイベントを流します';
+                endpointInput.placeholder = 'python3 /path/to/my_plugin.py';
+                break;
+            case 'exec':
+                hint.textContent = 'イベント発生時にこのコマンドを実行（環境変数でデータ渡し）';
+                endpointInput.placeholder = '/path/to/handler.sh';
+                break;
+        }
+    });
+
+    // プラグインタブ表示時にプラグイン一覧をロード
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            if (tab.dataset.tab === 'plugins') loadPlugins();
+        });
     });
 
   </script>
