@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Meeting Assistant",
+  "version": "1.0.0",
+  "description": "会議の文字起こし・リサーチ結果をサイドパネルでリアルタイム表示",
+  "permissions": ["sidePanel"],
+  "side_panel": {
+    "default_path": "sidepanel/index.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Meeting Assistant",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
