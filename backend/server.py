@@ -8,12 +8,39 @@ import asyncio
 import sys
 import os
 import json
+import logging
+import logging.handlers
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
 from logger import get_logger
 
 logger = get_logger("server")
+
+# ルートロガーを最初に設定（全モジュールのログが出力されるようにする）
+_log_format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+_formatter = logging.Formatter(_log_format)
+
+# コンソール出力（stdout に出力。stderr だと Electron が全て [Python Error] と表示する）
+_console_handler = logging.StreamHandler(sys.stdout)
+_console_handler.setFormatter(_formatter)
+
+# ファイル出力（ランタイム問題の事後調査用）
+_log_dir = Path(os.getenv('MEETING_ASSISTANT_LOG_DIR', os.path.join(os.path.dirname(__file__), 'logs')))
+_log_dir.mkdir(parents=True, exist_ok=True)
+_file_handler = logging.handlers.RotatingFileHandler(
+    _log_dir / "meeting_assistant.log",
+    maxBytes=10 * 1024 * 1024,  # 10MB
+    backupCount=5,
+    encoding="utf-8",
+)
+_file_handler.setFormatter(_formatter)
+
+logging.basicConfig(
+    level=logging.INFO,
+    handlers=[_console_handler, _file_handler],
+)
+logger = logging.getLogger(__name__)
 
 # .envファイルを読み込む
 try:
@@ -21,7 +48,7 @@ try:
     config_dir = os.getenv('MEETING_ASSISTANT_CONFIG_DIR', os.path.dirname(__file__))
     env_path = os.path.join(config_dir, '.env')
     load_dotenv(env_path)
-    logger.info(f"📁 Config directory: {config_dir}")
+    logger.info("Config directory: %s", config_dir)
 except ImportError:
     pass
 
@@ -32,7 +59,7 @@ try:
     from pydantic import BaseModel
     import uvicorn
 except ImportError:
-    logger.error("FastAPI not installed. Install with: pip install fastapi uvicorn websockets python-dotenv")
+    logger.critical("FastAPI not installed. Install with: pip install fastapi uvicorn websockets python-dotenv")
     sys.exit(1)
 
 # 自作モジュール
@@ -42,6 +69,10 @@ from llm_pipeline import LLMPipeline
 from calendar_service import calendar_service
 import file_manager
 from slack_service import SlackService
+from transcription import reset_transcription_service
+from transcription_engines import get_available_engines
+from refinement_providers import get_available_providers
+from plugin_manager import PluginManager
 
 # グローバル状態
 class AppState:
@@ -51,6 +82,7 @@ class AppState:
         self.interceptor: Optional[AudioInterceptor] = None
         self.llm_pipeline: Optional[LLMPipeline] = None
         self.slack_service: Optional[SlackService] = None
+        self.plugin_manager: Optional[PluginManager] = None
         self.loop = None
         self.active_meeting_type_id: Optional[int] = None
         self.current_session_id: Optional[int] = None
@@ -60,15 +92,22 @@ state = AppState()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 起動時
-    logger.info("🚀 Initializing database...")
+    logger.info("Initializing database...")
     database.init_db()
-    
+
     state.loop = asyncio.get_running_loop()
-    logger.info("✅ Event loop captured")
+    logger.info("Event loop captured")
+
+    # プラグインマネージャー初期化
+    state.plugin_manager = PluginManager()
+    logger.info("Plugin Manager initialized (%d plugins)", len(state.plugin_manager.plugins))
+
     yield
     # 終了時
     if state.interceptor:
         state.interceptor.cleanup()
+    if state.plugin_manager:
+        await state.plugin_manager.cleanup()
 
 app = FastAPI(title="Meeting Assistant API", lifespan=lifespan)
 
@@ -105,14 +144,28 @@ class RecordingUpdateRequest(BaseModel):
 class SettingsUpdate(BaseModel):
     settings: Dict[str, str]
 
+class ResearchSourceCreate(BaseModel):
+    name: str
+    source_type: str  # "custom_api" | "shell_command"
+    priority: int = 5
+    timeout: float = 5.0
+    config: str = '{}'
+
+class ResearchSourceUpdate(BaseModel):
+    name: Optional[str] = None
+    enabled: Optional[int] = None
+    priority: Optional[int] = None
+    timeout: Optional[float] = None
+    config: Optional[str] = None
+
 # バックグラウンド処理: セッション終了時の処理
 async def process_session_end(session_id: int):
-    logger.info(f"🔄 Processing session end for ID: {session_id}")
+    logger.info("Processing session end for ID: %d", session_id)
     
     # 1. データの取得
     details = database.get_session_details(session_id)
     if not details:
-        logger.error(f" Session details not found for ID: {session_id}")
+        logger.error("Session details not found for ID: %d", session_id)
         return
         
     session = details['session']
@@ -129,7 +182,7 @@ async def process_session_end(session_id: int):
     
     # 3. サマリー生成 (設定でONの場合)
     if auto_summary:
-        logger.info("🤖 Generating summary...")
+        logger.info("Generating summary...")
         # LLMPipelineの一時的なインスタンスを作成してサマリー生成
         # (現在のアクティブなパイプラインはクリーンアップされている可能性があるため)
         temp_pipeline = LLMPipeline()
@@ -142,7 +195,15 @@ async def process_session_end(session_id: int):
         # DBに保存
         if summary_text:
             database.save_summary(session_id, summary_text)
-            logger.info("✅ Summary saved to DB")
+            logger.info("Summary saved to DB for session %d", session_id)
+
+            # プラグインにsummary_generatedイベントを配信
+            if state.plugin_manager:
+                await state.plugin_manager.emit("summary_generated", {
+                    "session_id": session_id,
+                    "summary": summary_text,
+                    "title": session.get('title', ''),
+                })
     
     # 4. ファイル保存 (Markdown)
     file_path = file_manager.save_meeting_log(
@@ -155,7 +216,7 @@ async def process_session_end(session_id: int):
     )
     
     if file_path:
-        logger.info(f"💾 Log saved to: {file_path}")
+        logger.info("Log saved to: %s", file_path)
 
 # --- Endpoints ---
 
@@ -191,16 +252,27 @@ def on_transcript_callback(source, text):
             try:
                 database.add_transcript(state.current_session_id, source, text)
             except Exception as e:
-                logger.info(f"Failed to save transcript: {e}")
+                logger.error("Failed to save transcript: %s", e)
 
         asyncio.run_coroutine_threadsafe(broadcast_transcript(source, text), state.loop)
-        
+
+        # プラグインにtranscriptionイベントを配信
+        if state.plugin_manager:
+            asyncio.run_coroutine_threadsafe(
+                state.plugin_manager.emit("transcription", {
+                    "source": source,
+                    "text": text,
+                    "session_id": state.current_session_id,
+                }),
+                state.loop
+            )
+
         if state.llm_pipeline:
             # スピーカーのみリサーチ対象
             if source.lower() == "speaker":
-                logger.info(f"🔊 [SPEAKER] Sending to LLM pipeline: {text[:50]}...")
+                logger.debug("[SPEAKER] Sending to LLM pipeline: %s...", text[:50])
             else:
-                logger.info(f"🎤 [MIC] Skipping: {text[:30]}...")
+                logger.debug("[MIC] Skipping: %s...", text[:30])
             asyncio.run_coroutine_threadsafe(state.llm_pipeline.process_transcript(source, text), state.loop)
 
 async def on_research_callback(research_data):
@@ -217,11 +289,21 @@ async def on_research_callback(research_data):
                 text     # advice_text → research result
             )
         except Exception as e:
-            logger.info(f"Failed to save research: {e}")
+            logger.error("Failed to save research: %s", e)
     
     # 2. WebSocketでUI配信
     await broadcast_research(research_data)
-    
+
+    # 2.5. プラグインにresearch_resultイベントを配信
+    if state.plugin_manager:
+        await state.plugin_manager.emit("research_result", {
+            "entity": entity,
+            "text": text,
+            "session_id": state.current_session_id,
+            "source": research_data.get("source", ""),
+            "metadata": research_data.get("metadata", {}),
+        })
+
     # 3. Slackに投稿（同期関数をスレッドで実行）
     if state.slack_service:
         asyncio.create_task(
@@ -233,7 +315,7 @@ async def start_recording(request: RecordingStartRequest):
     if state.recording:
         return {"success": False, "message": "Already recording"}
     
-    logger.info(f"🔍 Start Request: transcribe={request.transcribe_enabled}, type={request.meeting_type_id}")
+    logger.info("Start Request: transcribe=%s, type=%s", request.transcribe_enabled, request.meeting_type_id)
     
     try:
         state.active_meeting_type_id = request.meeting_type_id
@@ -246,7 +328,7 @@ async def start_recording(request: RecordingStartRequest):
             event = calendar_service.get_current_event(calendar_id=calendar_id, time_window_minutes=30)
             if event:
                 session_title = event['summary']
-                logger.info(f"📅 Calendar event found: {session_title}")
+                logger.info("Calendar event found: %s", session_title)
             else:
                 session_title = f"Meeting {state.active_meeting_type_id or 'Untitled'}"
         
@@ -254,20 +336,20 @@ async def start_recording(request: RecordingStartRequest):
             state.active_meeting_type_id, 
             title=session_title
         )
-        logger.info(f"🆕 Session ID: {state.current_session_id}")
-        
+        logger.info("Session ID: %d", state.current_session_id)
+
         # リサーチ機能の初期化
-        logger.info(f"🔍 Transcribe enabled: {request.transcribe_enabled}")
+        logger.info("Transcribe enabled: %s", request.transcribe_enabled)
         
         if request.transcribe_enabled:
             settings = database.get_settings()
             research_enabled = settings.get('research_enabled', 'false') == 'true'
-            logger.info(f"🔍 Research enabled (from DB): {research_enabled}")
+            logger.info("Research enabled (from DB): %s", research_enabled)
             
             if research_enabled:
                 # LLMパイプライン（リサーチ用）
                 state.llm_pipeline = LLMPipeline(on_research=on_research_callback)
-                logger.info(f"✅ LLM Pipeline initialized")
+                logger.info("LLM Pipeline initialized")
                 
                 # Slackサービスの初期化
                 slack_bot_token = settings.get('slack_bot_token', '')
@@ -284,21 +366,21 @@ async def start_recording(request: RecordingStartRequest):
                         session_title
                     )
                     if success:
-                        logger.info(f"📨 Slack thread created for: {session_title}")
+                        logger.info("Slack thread created for: %s", session_title)
                     else:
-                        logger.info("⚠️  Failed to create Slack thread")
+                        logger.warning("Failed to create Slack thread")
                         state.slack_service = None
                 else:
                     state.slack_service = None
-                    logger.info("⚠️  Slack bot token or channel not configured")
+                    logger.info("Slack bot token or channel not configured")
             else:
                 state.llm_pipeline = None
                 state.slack_service = None
-                logger.info("ℹ️  Research feature disabled")
+                logger.info("Research feature disabled")
         else:
             state.llm_pipeline = None
             state.slack_service = None
-            logger.info("⚠️  Transcribe disabled, no LLM pipeline")
+            logger.info("Transcribe disabled, no LLM pipeline")
             
         state.interceptor = AudioInterceptor(
             tmp_dir=request.tmp_dir,
@@ -311,14 +393,22 @@ async def start_recording(request: RecordingStartRequest):
         
         state.recording = True
         await broadcast_status("recording_started")
-        
+
+        # プラグインにsession_startイベントを配信
+        if state.plugin_manager:
+            await state.plugin_manager.emit("session_start", {
+                "session_id": state.current_session_id,
+                "title": session_title,
+                "meeting_type_id": state.active_meeting_type_id,
+            })
+
         return {"success": True, "message": "Started", "session_id": state.current_session_id}
         
     except Exception as e:
         state.recording = False
         state.interceptor = None
         state.current_session_id = None
-        logger.error(f" Start failed: {e}")
+        logger.error("Recording start failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/recording/stop")
@@ -334,7 +424,7 @@ async def stop_recording(background_tasks: BackgroundTasks):
         # LLMパイプラインとSlackサービスのクリーンアップ
         if state.llm_pipeline:
             cache_size = len(state.llm_pipeline.researched_entities)
-            logger.info(f"💾 リサーチキャッシュをクリア（{cache_size}件）")
+            logger.info("リサーチキャッシュをクリア（%d件）", cache_size)
             state.llm_pipeline = None
         
         if state.slack_service:
@@ -343,18 +433,24 @@ async def stop_recording(background_tasks: BackgroundTasks):
         session_id = state.current_session_id
         if session_id:
             database.end_session(session_id)
-            logger.info(f"🏁 Session ended: ID {session_id}")
+            logger.info("Session ended: ID %d", session_id)
             # バックグラウンドでサマリー生成・ファイル保存を実行
             background_tasks.add_task(process_session_end, session_id)
             state.current_session_id = None
         
         state.recording = False
         await broadcast_status("recording_stopped")
-        
+
+        # プラグインにsession_endイベントを配信
+        if state.plugin_manager and session_id:
+            await state.plugin_manager.emit("session_end", {
+                "session_id": session_id,
+            })
+
         return {"success": True, "message": "Stopped"}
         
     except Exception as e:
-        logger.error(f" Stop failed: {e}")
+        logger.error("Recording stop failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/recording/mute-mic")
@@ -402,7 +498,7 @@ async def websocket_endpoint(websocket: WebSocket):
     """WebSocket接続（リアルタイム文字起こし配信用）"""
     await websocket.accept()
     state.websocket_clients.add(websocket)
-    logger.info(f"✅ WebSocket client connected. Total: {len(state.websocket_clients)}")
+    logger.info("WebSocket client connected. Total: %d", len(state.websocket_clients))
     
     # 現在のステータスを送信
     await websocket.send_text(json.dumps({
@@ -418,10 +514,94 @@ async def websocket_endpoint(websocket: WebSocket):
             if data == "ping":
                 await websocket.send_text("pong")
     except Exception as e:
-        logger.info(f"WebSocket error: {e}")
+        logger.debug("WebSocket error: %s", e)
     finally:
         state.websocket_clients.discard(websocket)
-        logger.error(f" WebSocket client disconnected. Total: {len(state.websocket_clients)}")
+        logger.info("WebSocket client disconnected. Total: %d", len(state.websocket_clients))
+
+# --- Plugin WebSocket & API ---
+
+@app.websocket("/ws/plugins")
+async def plugin_websocket_endpoint(websocket: WebSocket):
+    """プラグイン用WebSocketエンドポイント（外部プロセスから購読）"""
+    await websocket.accept()
+
+    # 初回メッセージで購読イベントを指定可能
+    # {"subscribe": ["transcription", "research_result"]} or {} for all
+    subscribed_events = []
+    try:
+        # 最初のメッセージを短時間待機（購読設定）
+        init_data = await asyncio.wait_for(websocket.receive_text(), timeout=2.0)
+        init_msg = json.loads(init_data)
+        subscribed_events = init_msg.get("subscribe", [])
+    except (asyncio.TimeoutError, json.JSONDecodeError):
+        pass  # タイムアウトまたは不正なJSON → 全イベント購読
+
+    state.plugin_manager.register_ws_client(websocket, subscribed_events)
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            if data == "ping":
+                await websocket.send_text("pong")
+    except Exception:
+        pass
+    finally:
+        state.plugin_manager.unregister_ws_client(websocket)
+
+class PluginCreateRequest(BaseModel):
+    name: str
+    protocol: str  # websocket | pipe | webhook | exec
+    endpoint: str = ""
+    events: List[str] = []
+    enabled: bool = True
+
+class PluginUpdateRequest(BaseModel):
+    protocol: Optional[str] = None
+    endpoint: Optional[str] = None
+    events: Optional[List[str]] = None
+    enabled: Optional[bool] = None
+
+@app.get("/plugins")
+async def list_plugins():
+    """プラグイン一覧"""
+    return {"plugins": state.plugin_manager.list_plugins()}
+
+@app.post("/plugins")
+async def create_plugin(request: PluginCreateRequest):
+    """プラグイン登録"""
+    plugin = state.plugin_manager.add_plugin(request.model_dump())
+    return {"success": True, "plugin": plugin.to_dict()}
+
+@app.get("/plugins/{name}")
+async def get_plugin(name: str):
+    """プラグイン取得"""
+    plugin = state.plugin_manager.get_plugin(name)
+    if not plugin:
+        raise HTTPException(status_code=404, detail="Plugin not found")
+    return {"plugin": plugin.to_dict()}
+
+@app.put("/plugins/{name}")
+async def update_plugin(name: str, request: PluginUpdateRequest):
+    """プラグイン更新"""
+    updates = {k: v for k, v in request.model_dump().items() if v is not None}
+    plugin = state.plugin_manager.update_plugin(name, updates)
+    if not plugin:
+        raise HTTPException(status_code=404, detail="Plugin not found")
+    return {"success": True, "plugin": plugin.to_dict()}
+
+@app.delete("/plugins/{name}")
+async def delete_plugin(name: str):
+    """プラグイン削除"""
+    if state.plugin_manager.remove_plugin(name):
+        return {"success": True}
+    raise HTTPException(status_code=404, detail="Plugin not found")
+
+@app.get("/plugins/events/types")
+async def list_event_types():
+    """利用可能なイベント種別一覧"""
+    from plugin_manager import PLUGIN_EVENTS
+    return {"events": PLUGIN_EVENTS}
 
 # --- Settings API ---
 
@@ -436,9 +616,26 @@ async def update_settings(update: SettingsUpdate):
     try:
         for key, value in update.settings.items():
             database.update_setting(key, value)
+        # エンジン関連の設定が変更されたらシングルトンをリセット
+        engine_keys = {"transcription_engine", "transcription_model", "transcription_language"}
+        if engine_keys & set(update.settings.keys()):
+            reset_transcription_service()
+            logger.info("Transcription service reset due to engine settings change")
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# --- Transcription Engine & Refinement Provider APIs ---
+
+@app.get("/transcription/engines")
+async def list_transcription_engines():
+    """利用可能な文字起こしエンジン一覧"""
+    return {"engines": get_available_engines()}
+
+@app.get("/transcription/refinement-providers")
+async def list_refinement_providers():
+    """利用可能な精度向上LLMプロバイダ一覧"""
+    return {"providers": get_available_providers()}
 
 # --- History & Download APIs ---
 
@@ -539,6 +736,44 @@ async def create_prompt_api(item: PromptCreate):
 @app.delete("/prompts/{pid}")
 async def delete_prompt_api(pid: int):
     database.delete_prompt(pid); return {"success": True}
+# --- Research Sources API ---
+
+@app.get("/research-sources")
+async def list_research_sources():
+    """リサーチソース一覧を取得"""
+    return {"sources": database.get_research_sources()}
+
+@app.post("/research-sources")
+async def create_research_source_api(item: ResearchSourceCreate):
+    """リサーチソースを追加"""
+    new_id = database.create_research_source(
+        name=item.name,
+        source_type=item.source_type,
+        priority=item.priority,
+        timeout=item.timeout,
+        config=item.config
+    )
+    return {"id": new_id}
+
+@app.put("/research-sources/{source_id}")
+async def update_research_source_api(source_id: int, item: ResearchSourceUpdate):
+    """リサーチソースを更新"""
+    updates = {k: v for k, v in item.model_dump().items() if v is not None}
+    if updates:
+        database.update_research_source(source_id, **updates)
+    return {"success": True}
+
+@app.delete("/research-sources/{source_id}")
+async def delete_research_source_api(source_id: int):
+    """リサーチソースを削除（組み込みソースは削除不可）"""
+    source = database.get_research_source(source_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+    if source['source_type'] == 'builtin':
+        raise HTTPException(status_code=400, detail="Cannot delete builtin source")
+    database.delete_research_source(source_id)
+    return {"success": True}
+
 # --- Calendar APIs ---
 
 @app.get("/calendar/current")
@@ -553,6 +788,15 @@ async def get_current_calendar_event():
     else:
         return {"success": False, "message": "No event found"}
 
+@app.get("/calendar/events")
+async def get_concurrent_calendar_events():
+    """現在時刻付近の全カレンダーイベントを取得（同一時間帯の複数候補対応）"""
+    settings = database.get_settings()
+    calendar_id = settings.get('calendar_id', 'primary')
+
+    events = calendar_service.get_concurrent_events(calendar_id=calendar_id)
+    return {"success": True, "events": events}
+
 @app.get("/calendar/today")
 async def get_today_events():
     """今日のカレンダーイベント一覧を取得"""
@@ -563,5 +807,5 @@ async def get_today_events():
     return {"events": events}
 
 if __name__ == "__main__":
-    logger.info("🚀 Meeting Assistant Backend v0.3.0")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    logger.info("Meeting Assistant Backend v0.3.0")
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_config=None)

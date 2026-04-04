@@ -10,3 +10,4 @@ node_modules/
 creds.json
 logs/
 *.log
+backend/logs/
