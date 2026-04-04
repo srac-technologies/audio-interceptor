@@ -26,7 +26,7 @@
 - バッファサイズ変更
 - 対象ソース変更（speaker/mic/both）
 - 文字起こし精度向上のON/OFF
-- リサーチ方式変更（llm/openclaw/hybrid）
+- リサーチ方式変更（llm/hybrid）
 
 **仕組み:**
 - 各文字起こしのたびに設定を再読み込み
@@ -37,7 +37,7 @@
 ```
 🔄 Buffer size changed: 2 → 3
    🗑️  Clearing buffer (1 items)
-🔄 Research method changed: llm → openclaw
+🔄 Research method changed: llm → hybrid
    ✅ Orchestrator re-initialized
 ```
 
@@ -67,7 +67,6 @@ export OPENAI_API_KEY="sk-..."
 # オプション（並列リサーチを使う場合）
 export BRAVE_API_KEY="BSA..."           # Brave Search API
 export LIMITLESS_API_KEY="..."          # Limitless API
-export OPENCLAW_GATEWAY_TOKEN="..."     # OpenClaw Gateway認証トークン
 ```
 
 **APIキーの取得方法:**
@@ -127,15 +126,9 @@ UPDATE app_settings SET value = 'あなたのプロンプト' WHERE key = 'ner_p
 - 高速・シンプル
 - APIキー: OpenAI のみ
 
-#### **OpenClaw統合**
-- OpenClaw Gateway経由で並列リサーチ
-- LLM + OpenClawナレッジ + Brave Search（設定済みの場合）
-- APIキー: OpenAI + （Brave API Key）
-- 必要: OpenClaw Gateway起動
-
 #### **ハイブリッド**
 - 全ソースを並列実行
-- LLM + Brave + OpenClaw + Limitless + gog
+- LLM + Brave + Limitless + gog
 - 最も多くの情報を取得（遅延は最大2秒程度）
 - 各ソースのAPIキーが必要
 
@@ -367,7 +360,7 @@ NER実行 (GPT-4o-mini) ←── ner_prompt
   └─ DB保存 (advices テーブル)
 ```
 
-#### リサーチ方式: OpenClaw統合 / ハイブリッド（並列実行）
+#### リサーチ方式: ハイブリッド（並列実行）
 
 ```
 音声インターセプト → 文字起こし → NER抽出
@@ -381,16 +374,15 @@ NER実行 (GPT-4o-mini) ←── ner_prompt
 │   - 優先度・タイムアウト制御                   │
 └─────────────────────────────────────────────┘
     ↓ (asyncio.gather - 並列実行)
-┌──────┬──────┬──────────┬──────────┬──────┐
-│ LLM  │Brave │OpenClaw  │Limitless │ gog  │
-│即答  │Search│Knowledge │   API    │ CLI  │
-│ 50ms │500ms │  300ms   │   1s     │  2s  │
-└──────┴──────┴──────────┴──────────┴──────┘
+┌──────┬──────┬──────────┬──────┐
+│ LLM  │Brave │Limitless │ gog  │
+│即答  │Search│   API    │ CLI  │
+│ 50ms │500ms │   1s     │  2s  │
+└──────┴──────┴──────────┴──────┘
     ↓ (結果が届いた順に配信)
 ┌─────────────────────────────────────────────┐
 │   Progressive Result Delivery               │
 │   t=0.05s: LLM即答 → 即表示                  │
-│   t=0.3s:  OpenClawナレッジ → 追加           │
 │   t=0.5s:  Brave検索結果 → 追加              │
 │   t=1.0s:  Limitless文脈 → 追加              │
 │   t=2.0s:  gog CLI結果 → 追加                │
@@ -407,7 +399,6 @@ DB: 各ソースの結果を保存
 |--------|--------|-------------|------|-----------|
 | **LLM** | 1 | 5s | GPT-4o-miniの知識 | OpenAI API Key |
 | **Brave Search** | 2 | 3s | 最新のWeb検索結果 | Brave API Key |
-| **OpenClaw Knowledge** | 3 | 2s | ナレッジファイル検索 | OpenClaw Gateway |
 | **Limitless API** | 4 | 5s | 文脈・履歴情報 | Limitless API Key |
 | **gog CLI** | 5 | 10s | CLI検索結果 | gog インストール |
 

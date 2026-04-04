@@ -37,11 +37,11 @@
  |                          +----------v-----------+                 |
  |                          | Research Orchestrator |                 |
  |                          | (parallel execution)  |                 |
- |                          +--+-------+--------+--+                 |
- |                             |       |        |                    |
+ |                          +--+-------+-----+--+                    |
+ |                             |       |       |                     |
  |                +------------+  +----+----+  +------------+       |
- |                | OpenClaw   |  |  LLM    |  |  Web Search|       |
- |                | Bridge     |  | Pipeline|  |  Sources   |       |
+ |                |  LLM       |  |  Brave  |  | Limitless  |       |
+ |                |  Pipeline  |  | Search  |  |  API       |       |
  |                +------------+  +---------+  +------------+       |
  |                                                                   |
  |   +---------------+  +----------------+  +-------------------+   |
@@ -75,7 +75,6 @@
 
 - **Real-time Transcription** - Whisper (API / local faster-whisper) で音声を即座にテキスト化
 - **Research Orchestrator** - 発言内容から人名・企業名を抽出し、複数ソースで並列リサーチ
-- **OpenClaw Gateway** - Web検索・LLM問い合わせを統合ゲートウェイ経由で実行
 - **Meeting Auto-detection** - Zoom / Google Meet を検知して録音開始を提案
 - **Slack Integration** - リサーチ結果をSlackスレッドにリアルタイム投稿
 - **Google Calendar** - 会議タイトルを自動取得
@@ -158,7 +157,6 @@ audio-interceptor/
 │   ├── audio_interceptor.py     # PulseAudio/PipeWire capture
 │   ├── transcription.py         # Whisper transcription service
 │   ├── research_orchestrator.py # Parallel research engine
-│   ├── openclaw_bridge.py       # OpenClaw Gateway integration
 │   ├── llm_pipeline.py          # LLM pipeline (advice/summary)
 │   ├── slack_service.py         # Slack thread posting
 │   ├── calendar_service.py      # Google Calendar integration

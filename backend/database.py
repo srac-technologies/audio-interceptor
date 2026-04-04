@@ -95,13 +95,10 @@ def init_db():
         'slack_bot_token': '',
         'slack_channel': '',
         'research_enabled': 'false',
-        'research_method': 'llm',  # llm, openclaw, hybrid
+        'research_method': 'llm',  # llm, hybrid
         'research_buffer_size': '2',  # バッファサイズ（発言数）
         'research_target_sources': 'speaker',  # speaker, mic, both
         'research_transcription_refinement': 'false',  # 文字起こし精度向上
-        'openclaw_gateway_url': 'http://localhost:18789',
-        'openclaw_gateway_token': '',
-        'openclaw_workspace_path': '~/clawd/workspaces/experimentation'
     }
     
     for key, value in default_settings.items():

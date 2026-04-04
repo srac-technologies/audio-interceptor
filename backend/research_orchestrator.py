@@ -114,32 +114,6 @@ class BraveSearchSource(ResearchSource):
         }
 
 
-class OpenClawKnowledgeSource(ResearchSource):
-    """OpenClawのナレッジファイル検索"""
-    
-    def __init__(self, gateway_url: str = None, token: str = None):
-        super().__init__(name="OpenClawKnowledge", priority=3, timeout=2.0)
-        self.gateway_url = gateway_url
-        self.token = token
-    
-    async def search(self, entity: str) -> Optional[Dict]:
-        if not self.gateway_url:
-            logger.debug(f"⏭️  [{self.name}] Gateway not configured")
-            return None
-        
-        logger.info(f"📚 [{self.name}] リサーチ開始: {entity}")
-        
-        # TODO: OpenClaw memory_search実装
-        # memory_search tool経由でナレッジファイル検索
-        
-        return {
-            "source": self.name,
-            "content": f"[OpenClaw Knowledge] {entity}の関連情報（実装予定）",
-            "metadata": {
-                "type": "knowledge_base"
-            }
-        }
-
 
 class LimitlessAPISource(ResearchSource):
     """Limitless APIによる文脈検索"""
@@ -185,90 +159,6 @@ class GogCLISource(ResearchSource):
             }
         }
 
-
-class OpenClawInboxSource(ResearchSource):
-    """OpenClaw inbox経由でタスク実行（疎結合）"""
-    
-    def __init__(self, workspace_path: str = None):
-        super().__init__(name="OpenClawInbox", priority=3, timeout=10.0)
-        
-        # ワークスペースパスの設定
-        if workspace_path:
-            self.workspace = Path(workspace_path).expanduser()
-        else:
-            # デフォルト: ~/clawd/workspaces/experimentation
-            self.workspace = Path.home() / "clawd" / "workspaces" / "experimentation"
-        
-        self.inbox_dir = self.workspace / "inbox"
-        self.inbox_dir.mkdir(parents=True, exist_ok=True)
-        
-        logger.info(f"   📁 Inbox: {self.inbox_dir}")
-    
-    async def search(self, entity: str) -> Optional[Dict]:
-        logger.info(f"📥 [{self.name}] リサーチ開始: {entity}")
-        
-        # タスクIDを生成（ユニーク）
-        task_id = f"research_{int(time.time() * 1000)}"
-        task_file = self.inbox_dir / f"task_{task_id}.json"
-        result_file = self.inbox_dir / f"result_{task_id}.json"
-        
-        # タスクを作成
-        task = {
-            "task_id": task_id,
-            "action": "research",
-            "entity": entity,
-            "instructions": f"{entity}について、以下を調べてください：\n1. Web検索で最新情報を取得\n2. ナレッジファイル（MEMORY.md等）から関連情報を検索\n3. 結果を200字以内で要約",
-            "created_at": datetime.now().isoformat()
-        }
-        
-        try:
-            # タスクファイルを書き込み
-            task_file.write_text(json.dumps(task, ensure_ascii=False, indent=2))
-            logger.info(f"   📝 タスク作成: {task_file.name}")
-            
-            # 結果を待機（タイムアウト付き）
-            start_time = time.time()
-            poll_interval = 0.2  # 200ms
-            max_polls = int(self.timeout / poll_interval)
-            
-            for i in range(max_polls):
-                if result_file.exists():
-                    # 結果を読み取り
-                    result_data = json.loads(result_file.read_text())
-                    elapsed = time.time() - start_time
-                    
-                    logger.info(f"✅ [{self.name}] 結果受信 (t={elapsed:.2f}s)")
-                    
-                    # ファイルをクリーンアップ
-                    task_file.unlink(missing_ok=True)
-                    result_file.unlink(missing_ok=True)
-                    
-                    # 結果を返却
-                    content = result_data.get("content", result_data.get("result", "結果なし"))
-                    
-                    return {
-                        "source": self.name,
-                        "content": content,
-                        "metadata": {
-                            "type": "openclaw_inbox",
-                            "task_id": task_id,
-                            "elapsed": elapsed,
-                            **result_data.get("metadata", {})
-                        }
-                    }
-                
-                await asyncio.sleep(poll_interval)
-            
-            # タイムアウト
-            logger.warning(f"⏱️  [{self.name}] タイムアウト: {entity} ({self.timeout}s)")
-            task_file.unlink(missing_ok=True)
-            return None
-            
-        except Exception as e:
-            logger.error(f"❌ [{self.name}] エラー: {e}")
-            task_file.unlink(missing_ok=True)
-            result_file.unlink(missing_ok=True)
-            return None
 
 
 class ResearchOrchestrator:

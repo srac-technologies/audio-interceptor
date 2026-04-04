@@ -9,10 +9,8 @@ from research_orchestrator import (
     ResearchOrchestrator,
     LLMSource,
     BraveSearchSource,
-    OpenClawKnowledgeSource,
     LimitlessAPISource,
     GogCLISource,
-    OpenClawInboxSource
 )
 
 # ロガー設定
@@ -122,12 +120,6 @@ class LLMPipeline:
         logger.info("  ✅ LLM Source enabled (priority=1)")
         
         # research_methodに応じてソースを追加
-        if method in ["openclaw", "hybrid"]:
-            # OpenClaw Inbox（ナレッジ検索 + web_search）
-            workspace_path = settings.get('openclaw_workspace_path', '~/clawd/workspaces/experimentation')
-            sources.append(OpenClawInboxSource(workspace_path))
-            logger.info("  ✅ OpenClaw Inbox enabled (priority=3)")
-        
         if method == "hybrid":
             # Brave Search（直接API）
             brave_api_key = os.environ.get("BRAVE_API_KEY")

@@ -632,10 +632,9 @@
               <label>リサーチ方式</label>
               <select id="settingResearchMethod">
                   <option value="llm">LLMのみ（高速）</option>
-                  <option value="openclaw">OpenClaw統合（並列リサーチ）</option>
                   <option value="hybrid">ハイブリッド（全ソース並列実行）</option>
               </select>
-              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ openclaw/hybridは複数ソースから段階的に結果を取得</div>
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ hybridは複数ソースから段階的に結果を取得</div>
           </div>
           
           <div class="form-group">
@@ -666,14 +665,6 @@
               <label>NER（固有名詞抽出）プロンプト</label>
               <textarea id="settingNerPrompt" style="height: 100px; font-family: monospace;" placeholder="会話から固有名詞を抽出..."></textarea>
               <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ JSON形式で {"entities": [...]} を返すように指示してください</div>
-          </div>
-          
-          <h4 style="margin: 15px 0 10px; color: #6496ff;">OpenClaw統合（オプション）</h4>
-          
-          <div class="form-group">
-              <label>OpenClaw Workspace Path</label>
-              <input type="text" id="settingOpenClawWorkspace" placeholder="~/clawd/workspaces/experimentation">
-              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ inbox方式で使用するワークスペースパス</div>
           </div>
           
           <h4 style="margin: 15px 0 10px; color: #6496ff;">Slack統合（オプション）</h4>
@@ -1211,7 +1202,6 @@
         document.getElementById('settingResearchTargetSources').value = s.research_target_sources || 'speaker';
         document.getElementById('settingResearchRefinement').checked = s.research_transcription_refinement === 'true';
         document.getElementById('settingNerPrompt').value = s.ner_prompt || '';
-        document.getElementById('settingOpenClawWorkspace').value = s.openclaw_workspace_path || '~/clawd/workspaces/experimentation';
         document.getElementById('settingSlackBotToken').value = s.slack_bot_token || '';
         document.getElementById('settingSlackChannel').value = s.slack_channel || '';
     }
@@ -1228,7 +1218,6 @@
             research_target_sources: document.getElementById('settingResearchTargetSources').value,
             research_transcription_refinement: document.getElementById('settingResearchRefinement').checked ? 'true' : 'false',
             ner_prompt: document.getElementById('settingNerPrompt').value,
-            openclaw_workspace_path: document.getElementById('settingOpenClawWorkspace').value,
             slack_bot_token: document.getElementById('settingSlackBotToken').value,
             slack_channel: document.getElementById('settingSlackChannel').value
         };
