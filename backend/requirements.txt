@@ -18,9 +18,13 @@ faster-whisper>=1.0.0
 sounddevice>=0.4.6
 numpy>=1.24.0
 
+# Moonshine Tiny JA / Kotoba-Whisper 用
+torch>=2.0.0
+transformers>=4.36.0
+librosa>=0.10.0
+
 # 追加の文字起こしエンジン（オプション）
 # google-cloud-speech>=2.21.0    # Google Cloud Speech-to-Text
-# transformers>=4.36.0           # Kotoba-Whisper (+ torch)
 # azure-cognitiveservices-speech>=1.35.0  # Azure Speech Services
 
 # 精度向上LLMプロバイダ（オプション）
