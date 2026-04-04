@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meeting Assistant</title>
+  <link rel="stylesheet" href="../../shared/css/theme.css">
+</head>
+<body>
+  <div class="ma-container">
+    <div class="ma-header">
+      <h1>Meeting Assistant</h1>
+      <div class="ma-connection-dot" id="connection-dot" title="未接続"></div>
+    </div>
+
+    <div class="ma-form-group" style="padding: 0 4px;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <label style="color:var(--color-text-dim); font-size:0.8rem; white-space:nowrap;">会議:</label>
+        <input type="text" class="ma-input" id="meeting-title" placeholder="会議タイトルを入力...">
+      </div>
+    </div>
+
+    <div class="ma-controls">
+      <button class="ma-btn ma-btn-start" id="btn-start">● 録音開始</button>
+      <button class="ma-btn ma-btn-stop" id="btn-stop" disabled>■ 停止</button>
+      <button class="ma-btn ma-btn-mute" id="btn-mute" disabled title="マイクミュート">🎤</button>
+    </div>
+
+    <div class="ma-tabs">
+      <button class="ma-tab active" data-tab="transcript">
+        文字起こし <span class="ma-badge" id="transcript-count">0</span>
+      </button>
+      <button class="ma-tab" data-tab="research">
+        リサーチ <span class="ma-badge" id="research-count">0</span>
+      </button>
+    </div>
+
+    <div class="ma-panel-content" id="panel-transcript" style="flex:1; overflow-y:auto; background:rgba(20,25,30,0.4); border:1px solid var(--color-border); border-radius:0 0 var(--radius) var(--radius); padding:10px;">
+    </div>
+
+    <div class="ma-panel-content" id="panel-research" hidden style="flex:1; overflow-y:auto; background:rgba(20,25,30,0.4); border:1px solid var(--color-border); border-radius:0 0 var(--radius) var(--radius); padding:10px;">
+    </div>
+
+    <div class="ma-status-bar" style="margin-top:4px;">
+      <div class="ma-recording-indicator" id="recording-indicator"></div>
+      <span id="status-text">バックエンドに接続中...</span>
+    </div>
+  </div>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>

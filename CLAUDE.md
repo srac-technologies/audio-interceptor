@@ -7,7 +7,8 @@ Meeting Assistant — Electron + Python のデスクトップアプリ。会議�
 ## Tech Stack
 
 - **Backend**: Python 3.10+ / FastAPI / uvicorn / SQLite
-- **Frontend**: Electron 40 / vanilla JavaScript (フレームワークなし)
+- **Frontend**: Electron 40 + Chrome Extension / vanilla JavaScript (フレームワークなし)
+- **Frontend Architecture**: shared/ (プラットフォーム共通UI) + renderer/ (Electron) + chrome-extension/ (Chrome)
 - **Audio**: PulseAudio / PipeWire (Linux)
 - **Transcription**: faster-whisper (local) or OpenAI Whisper API
 - **LLM**: OpenAI GPT-4o-mini / GPT-4o
@@ -32,10 +33,29 @@ cd backend && ./build.sh             # PyInstaller
 ## Architecture
 
 ```
-Electron (main/index.js)
-  │  spawn python3 server.py
-  │  WebSocket ws://localhost:8000/ws
-  ▼
+frontend/
+├── shared/                    プラットフォーム共通コード
+│   ├── css/theme.css          共通テーマ (CSS Variables)
+│   ├── api/client.js          ApiClient (HTTP + WebSocket)
+│   ├── platform.js            PlatformAdapter インターフェース
+│   └── components/            再利用可能UIコンポーネント
+│       ├── transcript-panel.js   文字起こし表示
+│       ├── research-panel.js     リサーチ結果表示
+│       ├── settings-modal.js     設定画面
+│       └── history-modal.js      履歴画面
+├── main/index.js              Electron main process
+├── renderer/                  Electron renderer
+│   ├── index.html             シェル HTML (shared CSS を参照)
+│   ├── app.js                 Electron アプリブートストラップ
+│   └── platform-electron.js   Electron アダプタ (IPC)
+└── chrome-extension/          Chrome Extension
+    ├── manifest.json
+    ├── background.js
+    └── sidepanel/
+        ├── index.html         シェル HTML (shared CSS を参照)
+        ├── app.js             Chrome アプリブートストラップ
+        └── platform-chrome.js Chrome アダプタ (HTTP直接)
+
 FastAPI (server.py)
   ├── audio_interceptor.py    PulseAudio capture
   ├── transcription.py        Whisper (local / API)
@@ -50,10 +70,10 @@ FastAPI (server.py)
 ## Code Conventions
 
 - **Python**: PEP 8 準拠。型ヒント使用 (`Optional`, `Dict`, `List`)。async/await。クラスベース。
-- **JavaScript**: vanilla JS, camelCase。IPC (`ipcMain` / `ipcRenderer`)。
+- **JavaScript**: vanilla JS (ES Modules), camelCase。共通コードは shared/ に、プラットフォーム固有は各 adapter に分離。
 - **DB**: SQLite, `sqlite3.Row` で dict-like アクセス。
 - **エラーハンドリング**: try-catch + logging。import 失敗時は graceful degradation。
-- **UI**: inline CSS, ダークテーマ (`#00ffaa` アクセント)。
+- **UI**: 共通テーマ CSS (`shared/css/theme.css`), CSS Variables, ダークテーマ (`#00ffaa` アクセント)。`ma-` プレフィックスで名前空間。
 
 ## Commit Messages
 
@@ -71,6 +91,8 @@ fix: 音声ブツブツ問題を修正 (latency 1ms→50ms)
 - **Research Orchestrator**: `ResearchSource` 基底クラス → 複数ソースを `asyncio.as_completed` で並列実行、完了順に配信
 - **Global AppState**: シングルトンで interceptor, llm_pipeline, slack_service を保持
 - **Settings**: SQLite `app_settings` テーブル。録音中でも動的リロード対応
+- **PlatformAdapter**: Electron/Chrome Extension の差異を吸収。UI コンポーネントは adapter 経由でプラットフォーム機能にアクセス
+- **ApiClient**: HTTP + WebSocket をラップ。イベントベースでメッセージをディスパッチ
 
 ## .env (backend/)
 
