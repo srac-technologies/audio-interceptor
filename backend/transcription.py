@@ -63,11 +63,12 @@ class TranscriptionService:
             logger.info(f"Transcription engine initialized: {self.engine_id}")
         except Exception as e:
             logger.error(f"Failed to init engine '{self.engine_id}': {e}")
-            # フォールバック: faster-whisper
+            # フォールバック: faster-whisper (安全なデフォルトモデルを使用)
             if self.engine_id != "faster-whisper":
-                logger.info("Falling back to faster-whisper")
+                fallback_model = "small"
+                logger.info("Falling back to faster-whisper (model=%s)", fallback_model)
                 self.engine_id = "faster-whisper"
-                self.engine = create_engine("faster-whisper", model=WHISPER_MODEL)
+                self.engine = create_engine("faster-whisper", model=fallback_model)
             else:
                 raise
 

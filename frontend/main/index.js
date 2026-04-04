@@ -97,10 +97,10 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
   // レンダラープロセスのコンソールログを main プロセスに中継
-  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+  mainWindow.webContents.on('console-message', (event) => {
     const levels = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
-    const levelStr = levels[level] || 'INFO';
-    console.log(`[Renderer/${levelStr}] ${message}`);
+    const levelStr = levels[event.level] || 'INFO';
+    console.log(`[Renderer/${levelStr}] ${event.message}`);
   });
 
   // DevTools は開発時のみ（環境変数で制御）

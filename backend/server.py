@@ -18,8 +18,8 @@ from contextlib import asynccontextmanager
 _log_format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 _formatter = logging.Formatter(_log_format)
 
-# コンソール出力
-_console_handler = logging.StreamHandler()
+# コンソール出力（stdout に出力。stderr だと Electron が全て [Python Error] と表示する）
+_console_handler = logging.StreamHandler(sys.stdout)
 _console_handler.setFormatter(_formatter)
 
 # ファイル出力（ランタイム問題の事後調査用）
