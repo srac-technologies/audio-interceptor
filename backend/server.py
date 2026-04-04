@@ -558,6 +558,15 @@ async def get_current_calendar_event():
     else:
         return {"success": False, "message": "No event found"}
 
+@app.get("/calendar/events")
+async def get_concurrent_calendar_events():
+    """現在時刻付近の全カレンダーイベントを取得（同一時間帯の複数候補対応）"""
+    settings = database.get_settings()
+    calendar_id = settings.get('calendar_id', 'primary')
+
+    events = calendar_service.get_concurrent_events(calendar_id=calendar_id)
+    return {"success": True, "events": events}
+
 @app.get("/calendar/today")
 async def get_today_events():
     """今日のカレンダーイベント一覧を取得"""
