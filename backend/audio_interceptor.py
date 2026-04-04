@@ -15,10 +15,13 @@ import subprocess
 import threading
 import json
 import asyncio
+import logging
 import platform
 from pathlib import Path
 from datetime import datetime
 from abc import ABC, abstractmethod
+
+logger = logging.getLogger(__name__)
 
 # 設定
 SAMPLE_RATE = 48000
@@ -91,7 +94,7 @@ class LinuxAudioBackend(AudioBackend):
             )
             if result.returncode == 0:
                 self.default_source = result.stdout.strip()
-                print(f"Default microphone source: {self.default_source}")
+                logger.info("Default microphone source: %s", self.default_source)
         except Exception:
             pass
 
@@ -104,7 +107,7 @@ class LinuxAudioBackend(AudioBackend):
 
         if result.returncode == 0:
             self.sink_module_id = result.stdout.strip()
-            print(f"✅ Created virtual speaker: {self.virtual_sink_name} (module {self.sink_module_id})")
+            logger.info("Created virtual speaker: %s (module %s)", self.virtual_sink_name, self.sink_module_id)
         else:
             raise Exception(f"Failed to create virtual sink: {result.stderr}")
 
@@ -116,12 +119,12 @@ class LinuxAudioBackend(AudioBackend):
         ]
         if target_sink:
             loopback_args.append(f"sink={target_sink}")
-            print(f"   Looping back to: {target_sink}")
+            logger.info("Looping back to: %s", target_sink)
 
         result = subprocess.run(loopback_args, capture_output=True, text=True)
         if result.returncode == 0:
             self.loopback_module_id = result.stdout.strip()
-            print(f"✅ Created loopback to real speaker (module {self.loopback_module_id})")
+            logger.info("Created loopback to real speaker (module %s)", self.loopback_module_id)
 
     def cleanup(self):
         if self.loopback_module_id:
@@ -219,9 +222,9 @@ class SounddeviceAudioBackend(AudioBackend):
         if default_input is not None and default_input >= 0:
             self._mic_device = default_input
             info = sd.query_devices(default_input)
-            print(f"Default microphone: {info['name']}")
+            logger.info("Default microphone: %s", info['name'])
         else:
-            print("⚠️  No default input device found")
+            logger.warning("No default input device found")
 
         # スピーカー（ループバック）デバイス
         if current_platform == "macos":
@@ -241,23 +244,22 @@ class SounddeviceAudioBackend(AudioBackend):
                 for name in loopback_names:
                     if name.lower() in dev['name'].lower():
                         self._loopback_device = i
-                        print(f"✅ Found loopback device: {dev['name']}")
+                        logger.info("Found loopback device: %s", dev['name'])
                         break
             if self._loopback_device is not None:
                 break
 
         if self._loopback_device is None:
-            print("⚠️  No loopback device found (BlackHole/Soundflower).")
-            print("   スピーカー音声のキャプチャには BlackHole のインストールが必要です:")
-            print("   brew install blackhole-2ch")
-            print("   インストール後、Audio MIDI Setup でマルチ出力デバイスを作成してください。")
+            logger.warning("No loopback device found (BlackHole/Soundflower). "
+                           "スピーカー音声のキャプチャには BlackHole のインストールが必要です: "
+                           "brew install blackhole-2ch / Audio MIDI Setup でマルチ出力デバイスを作成")
 
         # target_sinkが指定されていれば出力デバイスを設定
         if target_sink:
             for i, dev in enumerate(devices):
                 if dev['max_output_channels'] > 0 and target_sink in dev['name']:
                     self._speaker_device = i
-                    print(f"   Output device: {dev['name']}")
+                    logger.info("Output device: %s", dev['name'])
                     break
 
     def _setup_windows_loopback(self, target_sink=None):
@@ -276,7 +278,7 @@ class SounddeviceAudioBackend(AudioBackend):
                 'wave out' in name_lower
             ):
                 self._loopback_device = i
-                print(f"✅ Found loopback device: {dev['name']}")
+                logger.info("Found loopback device: %s", dev['name'])
                 break
 
         if self._loopback_device is None:
@@ -287,19 +289,19 @@ class SounddeviceAudioBackend(AudioBackend):
                     if 'wasapi' in hostapi.get('name', '').lower():
                         # WASAPI output devices can be opened as loopback
                         self._loopback_device = i
-                        print(f"✅ Using WASAPI loopback: {dev['name']}")
+                        logger.info("Using WASAPI loopback: %s", dev['name'])
                         break
 
         if self._loopback_device is None:
-            print("⚠️  No loopback device found.")
-            print("   スピーカー音声のキャプチャには「ステレオミキサー」を有効にするか、")
-            print("   VB-Audio Virtual Cable のインストールが必要な場合があります。")
+            logger.warning("No loopback device found. "
+                           "スピーカー音声のキャプチャには「ステレオミキサー」を有効にするか、"
+                           "VB-Audio Virtual Cable のインストールが必要な場合があります。")
 
         if target_sink:
             for i, dev in enumerate(devices):
                 if dev['max_output_channels'] > 0 and target_sink in dev['name']:
                     self._speaker_device = i
-                    print(f"   Output device: {dev['name']}")
+                    logger.info("Output device: %s", dev['name'])
                     break
 
     def cleanup(self):
@@ -334,7 +336,7 @@ class SounddeviceAudioBackend(AudioBackend):
             )
             return recording.tobytes()
         except Exception as e:
-            print(f"⚠️  Recording error ({label}): {e}")
+            logger.error("Recording error (%s): %s", label, e)
             return b''
 
     def get_available_sinks(self) -> list:
@@ -356,7 +358,7 @@ def create_audio_backend() -> AudioBackend:
     elif current_platform in ("macos", "windows"):
         return SounddeviceAudioBackend()
     else:
-        print(f"⚠️  Unknown platform: {current_platform}, falling back to sounddevice")
+        logger.warning("Unknown platform: %s, falling back to sounddevice", current_platform)
         return SounddeviceAudioBackend()
 
 
@@ -377,15 +379,14 @@ class AudioInterceptor:
             try:
                 from transcription import get_transcription_service
                 self.transcription_service = get_transcription_service()
-                print(f"✅ Transcription Service initialized: mode={self.transcription_service.mode}, model={self.transcription_service.model_name}")
+                logger.info("Transcription Service initialized: engine=%s", self.transcription_service.engine_id)
             except Exception as e:
-                print(f"⚠️  Warning: Failed to initialize Transcription Service: {e}")
-                print("   Falling back to recording only mode.")
+                logger.warning("Failed to initialize Transcription Service: %s. Falling back to recording only mode.", e)
                 self.transcribe_enabled = False
 
     def setup(self):
         """音声デバイスをセットアップ"""
-        print(f"Setting up audio devices (platform: {get_platform()})...")
+        logger.info("Setting up audio devices (platform: %s)...", get_platform())
 
         try:
             self.backend.setup(target_sink=self.target_sink)
@@ -393,28 +394,23 @@ class AudioInterceptor:
             speaker_src = self.backend.get_speaker_source()
             mic_src = self.backend.get_mic_source()
 
-            print(f"\n📋 Setup complete!")
-            print(f"   Speaker source: {speaker_src or '(none)'}")
-            print(f"   Microphone: {mic_src or 'default'}")
-            if self.transcribe_enabled:
-                print("   📝 Transcription: ENABLED")
-            else:
-                print("   📝 Transcription: DISABLED")
+            logger.info("Setup complete! Speaker source: %s, Microphone: %s, Transcription: %s",
+                        speaker_src or '(none)', mic_src or 'default',
+                        'ENABLED' if self.transcribe_enabled else 'DISABLED')
 
         except Exception as e:
-            print(f"❌ Setup failed: {e}")
+            logger.error("Setup failed: %s", e, exc_info=True)
             self.cleanup()
             sys.exit(1)
 
     def set_mic_mute(self, muted: bool):
         """マイクのミュート状態を設定"""
         self.mic_muted = muted
-        status = "MUTED 🔇" if muted else "UNMUTED 🎤"
-        print(f"🎤 Microphone {status}")
+        logger.info("Microphone %s", "MUTED" if muted else "UNMUTED")
 
     def cleanup(self):
         """音声デバイスをクリーンアップ"""
-        print("\n🧹 Cleaning up audio devices...")
+        logger.info("Cleaning up audio devices...")
         self.running = False
 
         for thread in self.threads:
@@ -422,11 +418,11 @@ class AudioInterceptor:
                 thread.join(timeout=2)
 
         self.backend.cleanup()
-        print("✅ Cleanup complete")
+        logger.info("Audio cleanup complete")
 
     def start_intercepting(self):
         """音声インターセプションを開始"""
-        print("\n🎙️  Starting audio interception...")
+        logger.info("Starting audio interception...")
 
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
 
@@ -441,7 +437,7 @@ class AudioInterceptor:
             speaker_thread.start()
             self.threads.append(speaker_thread)
         else:
-            print("⚠️  No speaker loopback source available, skipping speaker recording")
+            logger.warning("No speaker loopback source available, skipping speaker recording")
 
         # マイク入力を録音
         mic_src = self.backend.get_mic_source()
@@ -454,9 +450,9 @@ class AudioInterceptor:
             mic_thread.start()
             self.threads.append(mic_thread)
         else:
-            print("⚠️  No default microphone found, only recording speaker output")
+            logger.warning("No default microphone found, only recording speaker output")
 
-        print(f"💾 Saving 10-second chunks to: {self.tmp_dir.absolute()}")
+        logger.info("Saving 10-second chunks to: %s", self.tmp_dir.absolute())
 
     def record_audio_stream(self, source, label):
         """音声ストリームを10秒チャンクで録音"""
@@ -467,7 +463,7 @@ class AudioInterceptor:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 filename = self.tmp_dir / f"{label}_{timestamp}_{chunk_index}.wav"
 
-                print(f"⏺️  Recording {label} chunk {chunk_index}...")
+                logger.debug("Recording %s chunk %d...", label, chunk_index)
 
                 audio_data = self.backend.record_chunk(source, label)
 
@@ -477,13 +473,13 @@ class AudioInterceptor:
                 if audio_data:
                     # マイクミュート中はスキップ
                     if label == "mic" and self.mic_muted:
-                        print(f"🔇 Mic muted - skipping chunk {chunk_index}")
+                        logger.debug("Mic muted - skipping chunk %d", chunk_index)
                         chunk_index += 1
                         continue
 
                     self.write_wav(filename, audio_data)
                     size_kb = len(audio_data) / 1024
-                    print(f"✅ Saved {label} chunk {chunk_index}: {filename.name} ({size_kb:.1f} KB)")
+                    logger.debug("Saved %s chunk %d: %s (%.1f KB)", label, chunk_index, filename.name, size_kb)
 
                     if self.transcribe_enabled:
                         transcribe_thread = threading.Thread(
@@ -497,7 +493,7 @@ class AudioInterceptor:
 
             except Exception as e:
                 if self.running:
-                    print(f"❌ Error recording {label}: {e}")
+                    logger.error("Error recording %s: %s", label, e)
                     time.sleep(1)
                 else:
                     break
@@ -511,7 +507,7 @@ class AudioInterceptor:
                 wav_file.setframerate(SAMPLE_RATE)
                 wav_file.writeframes(pcm_data)
         except Exception as e:
-            print(f"❌ Failed to write WAV file {filename}: {e}")
+            logger.error("Failed to write WAV file %s: %s", filename, e)
 
     def is_silent(self, filename, threshold=500):
         """音声ファイルが無音かどうかをチェック"""
@@ -526,18 +522,18 @@ class AudioInterceptor:
                 rms = (sum_squares / len(samples)) ** 0.5
                 return rms < threshold
         except Exception as e:
-            print(f"⚠️ Failed to check silence: {e}")
+            logger.warning("Failed to check silence: %s", e)
             return False
 
     def transcribe_audio(self, filename, label):
         """Transcription Serviceを使って文字起こし"""
         try:
             if self.is_silent(filename):
-                print(f"🔇 Skipping silent audio: {filename.name}")
+                logger.debug("Skipping silent audio: %s", filename.name)
                 return
 
             if not self.transcription_service:
-                print("⚠️ Transcription service not available")
+                logger.warning("Transcription service not available")
                 return
 
             loop = asyncio.new_event_loop()
@@ -566,21 +562,20 @@ class AudioInterceptor:
             if text and len(text) < 50:
                 for phrase in hallucination_phrases:
                     if phrase in text:
-                        print(f"🚫 Filtered hallucination: {text}")
+                        logger.debug("Filtered hallucination: %s", text)
                         return
 
             if text:
-                prefix = "[Speaker 🔊]" if label == "speaker" else "[Mic 🎤]"
-                print(f"\n{prefix} {text}\n")
+                logger.info("[%s] %s", label.upper(), text)
 
                 if self.on_transcript:
                     try:
                         self.on_transcript(label, text)
                     except Exception as cb_err:
-                        print(f"⚠️ Callback error: {cb_err}")
+                        logger.error("Transcript callback error: %s", cb_err)
 
         except Exception as e:
-            print(f"⚠️ Transcription error: {e}")
+            logger.error("Transcription error: %s", e, exc_info=True)
 
 
 def get_available_sinks():

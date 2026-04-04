@@ -13,6 +13,42 @@ const log = getLogger({
   enabled: (process.env.LOG_ENABLED || 'true').toLowerCase() === 'true',
 });
 
+// --- Logging ---
+// Electron メインプロセスのログをファイルに永続化
+const logDir = app.isPackaged
+  ? path.join(app.getPath('userData'), 'logs')
+  : path.join(__dirname, '../../backend/logs');
+
+if (!fs.existsSync(logDir)) {
+  fs.mkdirSync(logDir, { recursive: true });
+}
+
+const logStream = fs.createWriteStream(path.join(logDir, 'electron-main.log'), { flags: 'a' });
+
+function formatLog(level, ...args) {
+  const ts = new Date().toISOString();
+  return `${ts} [${level}] ${args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ')}\n`;
+}
+
+const originalConsoleLog = console.log;
+const originalConsoleError = console.error;
+const originalConsoleWarn = console.warn;
+
+console.log = (...args) => {
+  logStream.write(formatLog('INFO', ...args));
+  originalConsoleLog.apply(console, args);
+};
+
+console.error = (...args) => {
+  logStream.write(formatLog('ERROR', ...args));
+  originalConsoleError.apply(console, args);
+};
+
+console.warn = (...args) => {
+  logStream.write(formatLog('WARN', ...args));
+  originalConsoleWarn.apply(console, args);
+};
+
 let mainWindow = null;
 let pythonProcess = null;
 let detectionInterval = null;
