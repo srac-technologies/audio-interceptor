@@ -11,6 +11,9 @@ import json
 from pathlib import Path
 from typing import Optional, Dict, Any
 from contextlib import asynccontextmanager
+from logger import get_logger
+
+logger = get_logger("server")
 
 # .envファイルを読み込む
 try:
@@ -18,7 +21,7 @@ try:
     config_dir = os.getenv('MEETING_ASSISTANT_CONFIG_DIR', os.path.dirname(__file__))
     env_path = os.path.join(config_dir, '.env')
     load_dotenv(env_path)
-    print(f"📁 Config directory: {config_dir}")
+    logger.info(f"📁 Config directory: {config_dir}")
 except ImportError:
     pass
 
@@ -29,7 +32,7 @@ try:
     from pydantic import BaseModel
     import uvicorn
 except ImportError:
-    print("⚠️  FastAPI not installed. Install with: pip install fastapi uvicorn websockets python-dotenv")
+    logger.error("FastAPI not installed. Install with: pip install fastapi uvicorn websockets python-dotenv")
     sys.exit(1)
 
 # 自作モジュール
@@ -57,11 +60,11 @@ state = AppState()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 起動時
-    print("🚀 Initializing database...")
+    logger.info("🚀 Initializing database...")
     database.init_db()
     
     state.loop = asyncio.get_running_loop()
-    print("✅ Event loop captured")
+    logger.info("✅ Event loop captured")
     yield
     # 終了時
     if state.interceptor:
@@ -104,12 +107,12 @@ class SettingsUpdate(BaseModel):
 
 # バックグラウンド処理: セッション終了時の処理
 async def process_session_end(session_id: int):
-    print(f"🔄 Processing session end for ID: {session_id}")
+    logger.info(f"🔄 Processing session end for ID: {session_id}")
     
     # 1. データの取得
     details = database.get_session_details(session_id)
     if not details:
-        print(f"❌ Session details not found for ID: {session_id}")
+        logger.error(f" Session details not found for ID: {session_id}")
         return
         
     session = details['session']
@@ -126,7 +129,7 @@ async def process_session_end(session_id: int):
     
     # 3. サマリー生成 (設定でONの場合)
     if auto_summary:
-        print("🤖 Generating summary...")
+        logger.info("🤖 Generating summary...")
         # LLMPipelineの一時的なインスタンスを作成してサマリー生成
         # (現在のアクティブなパイプラインはクリーンアップされている可能性があるため)
         temp_pipeline = LLMPipeline()
@@ -139,7 +142,7 @@ async def process_session_end(session_id: int):
         # DBに保存
         if summary_text:
             database.save_summary(session_id, summary_text)
-            print("✅ Summary saved to DB")
+            logger.info("✅ Summary saved to DB")
     
     # 4. ファイル保存 (Markdown)
     file_path = file_manager.save_meeting_log(
@@ -152,7 +155,7 @@ async def process_session_end(session_id: int):
     )
     
     if file_path:
-        print(f"💾 Log saved to: {file_path}")
+        logger.info(f"💾 Log saved to: {file_path}")
 
 # --- Endpoints ---
 
@@ -188,16 +191,16 @@ def on_transcript_callback(source, text):
             try:
                 database.add_transcript(state.current_session_id, source, text)
             except Exception as e:
-                print(f"Failed to save transcript: {e}")
+                logger.info(f"Failed to save transcript: {e}")
 
         asyncio.run_coroutine_threadsafe(broadcast_transcript(source, text), state.loop)
         
         if state.llm_pipeline:
             # スピーカーのみリサーチ対象
             if source.lower() == "speaker":
-                print(f"🔊 [SPEAKER] Sending to LLM pipeline: {text[:50]}...")
+                logger.info(f"🔊 [SPEAKER] Sending to LLM pipeline: {text[:50]}...")
             else:
-                print(f"🎤 [MIC] Skipping: {text[:30]}...")
+                logger.info(f"🎤 [MIC] Skipping: {text[:30]}...")
             asyncio.run_coroutine_threadsafe(state.llm_pipeline.process_transcript(source, text), state.loop)
 
 async def on_research_callback(research_data):
@@ -214,7 +217,7 @@ async def on_research_callback(research_data):
                 text     # advice_text → research result
             )
         except Exception as e:
-            print(f"Failed to save research: {e}")
+            logger.info(f"Failed to save research: {e}")
     
     # 2. WebSocketでUI配信
     await broadcast_research(research_data)
@@ -230,7 +233,7 @@ async def start_recording(request: RecordingStartRequest):
     if state.recording:
         return {"success": False, "message": "Already recording"}
     
-    print(f"🔍 Start Request: transcribe={request.transcribe_enabled}, type={request.meeting_type_id}")
+    logger.info(f"🔍 Start Request: transcribe={request.transcribe_enabled}, type={request.meeting_type_id}")
     
     try:
         state.active_meeting_type_id = request.meeting_type_id
@@ -243,7 +246,7 @@ async def start_recording(request: RecordingStartRequest):
             event = calendar_service.get_current_event(calendar_id=calendar_id, time_window_minutes=30)
             if event:
                 session_title = event['summary']
-                print(f"📅 Calendar event found: {session_title}")
+                logger.info(f"📅 Calendar event found: {session_title}")
             else:
                 session_title = f"Meeting {state.active_meeting_type_id or 'Untitled'}"
         
@@ -251,20 +254,20 @@ async def start_recording(request: RecordingStartRequest):
             state.active_meeting_type_id, 
             title=session_title
         )
-        print(f"🆕 Session ID: {state.current_session_id}")
+        logger.info(f"🆕 Session ID: {state.current_session_id}")
         
         # リサーチ機能の初期化
-        print(f"🔍 Transcribe enabled: {request.transcribe_enabled}")
+        logger.info(f"🔍 Transcribe enabled: {request.transcribe_enabled}")
         
         if request.transcribe_enabled:
             settings = database.get_settings()
             research_enabled = settings.get('research_enabled', 'false') == 'true'
-            print(f"🔍 Research enabled (from DB): {research_enabled}")
+            logger.info(f"🔍 Research enabled (from DB): {research_enabled}")
             
             if research_enabled:
                 # LLMパイプライン（リサーチ用）
                 state.llm_pipeline = LLMPipeline(on_research=on_research_callback)
-                print(f"✅ LLM Pipeline initialized")
+                logger.info(f"✅ LLM Pipeline initialized")
                 
                 # Slackサービスの初期化
                 slack_bot_token = settings.get('slack_bot_token', '')
@@ -281,21 +284,21 @@ async def start_recording(request: RecordingStartRequest):
                         session_title
                     )
                     if success:
-                        print(f"📨 Slack thread created for: {session_title}")
+                        logger.info(f"📨 Slack thread created for: {session_title}")
                     else:
-                        print("⚠️  Failed to create Slack thread")
+                        logger.info("⚠️  Failed to create Slack thread")
                         state.slack_service = None
                 else:
                     state.slack_service = None
-                    print("⚠️  Slack bot token or channel not configured")
+                    logger.info("⚠️  Slack bot token or channel not configured")
             else:
                 state.llm_pipeline = None
                 state.slack_service = None
-                print("ℹ️  Research feature disabled")
+                logger.info("ℹ️  Research feature disabled")
         else:
             state.llm_pipeline = None
             state.slack_service = None
-            print("⚠️  Transcribe disabled, no LLM pipeline")
+            logger.info("⚠️  Transcribe disabled, no LLM pipeline")
             
         state.interceptor = AudioInterceptor(
             tmp_dir=request.tmp_dir,
@@ -315,7 +318,7 @@ async def start_recording(request: RecordingStartRequest):
         state.recording = False
         state.interceptor = None
         state.current_session_id = None
-        print(f"❌ Start failed: {e}")
+        logger.error(f" Start failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/recording/stop")
@@ -331,7 +334,7 @@ async def stop_recording(background_tasks: BackgroundTasks):
         # LLMパイプラインとSlackサービスのクリーンアップ
         if state.llm_pipeline:
             cache_size = len(state.llm_pipeline.researched_entities)
-            print(f"💾 リサーチキャッシュをクリア（{cache_size}件）")
+            logger.info(f"💾 リサーチキャッシュをクリア（{cache_size}件）")
             state.llm_pipeline = None
         
         if state.slack_service:
@@ -340,7 +343,7 @@ async def stop_recording(background_tasks: BackgroundTasks):
         session_id = state.current_session_id
         if session_id:
             database.end_session(session_id)
-            print(f"🏁 Session ended: ID {session_id}")
+            logger.info(f"🏁 Session ended: ID {session_id}")
             # バックグラウンドでサマリー生成・ファイル保存を実行
             background_tasks.add_task(process_session_end, session_id)
             state.current_session_id = None
@@ -351,7 +354,7 @@ async def stop_recording(background_tasks: BackgroundTasks):
         return {"success": True, "message": "Stopped"}
         
     except Exception as e:
-        print(f"❌ Stop failed: {e}")
+        logger.error(f" Stop failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/recording/mute-mic")
@@ -399,7 +402,7 @@ async def websocket_endpoint(websocket: WebSocket):
     """WebSocket接続（リアルタイム文字起こし配信用）"""
     await websocket.accept()
     state.websocket_clients.add(websocket)
-    print(f"✅ WebSocket client connected. Total: {len(state.websocket_clients)}")
+    logger.info(f"✅ WebSocket client connected. Total: {len(state.websocket_clients)}")
     
     # 現在のステータスを送信
     await websocket.send_text(json.dumps({
@@ -415,10 +418,10 @@ async def websocket_endpoint(websocket: WebSocket):
             if data == "ping":
                 await websocket.send_text("pong")
     except Exception as e:
-        print(f"WebSocket error: {e}")
+        logger.info(f"WebSocket error: {e}")
     finally:
         state.websocket_clients.discard(websocket)
-        print(f"❌ WebSocket client disconnected. Total: {len(state.websocket_clients)}")
+        logger.error(f" WebSocket client disconnected. Total: {len(state.websocket_clients)}")
 
 # --- Settings API ---
 
@@ -560,5 +563,5 @@ async def get_today_events():
     return {"events": events}
 
 if __name__ == "__main__":
-    print("🚀 Meeting Assistant Backend v0.3.0")
+    logger.info("🚀 Meeting Assistant Backend v0.3.0")
     uvicorn.run(app, host="0.0.0.0", port=8000)

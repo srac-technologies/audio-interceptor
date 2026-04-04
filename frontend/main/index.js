@@ -3,6 +3,15 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const activeWin = require('active-win');
+const { detectMeetingApp } = require('./meeting-detection');
+const { getLogger } = require('./logger');
+
+const log = getLogger({
+  logDir: app.isPackaged
+    ? path.join(app.getPath('userData'), 'logs')
+    : path.join(__dirname, '../../logs'),
+  enabled: (process.env.LOG_ENABLED || 'true').toLowerCase() === 'true',
+});
 
 let mainWindow = null;
 let pythonProcess = null;
@@ -19,7 +28,7 @@ function setupConfigDirectory() {
   // 設定ディレクトリが存在しない場合は作成
   if (!fs.existsSync(configDir)) {
     fs.mkdirSync(configDir, { recursive: true });
-    console.log('[Setup] Created config directory:', configDir);
+    log.info('[Setup] Created config directory:', configDir);
     
     // .env.example をコピー
     const examplePath = path.join(process.resourcesPath, 'backend', '.env.example');
@@ -27,7 +36,7 @@ function setupConfigDirectory() {
     
     if (fs.existsSync(examplePath)) {
       fs.copyFileSync(examplePath, envPath);
-      console.log('[Setup] Created .env file from example');
+      log.info('[Setup] Created .env file from example');
       
       // 初回起動の通知
       dialog.showMessageBox({
@@ -59,6 +68,9 @@ function createWindow() {
 
   // 開発中は簡易HTMLをロード
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+
+  // renderer processのconsole出力をログファイルにキャプチャ
+  log.captureRenderer(mainWindow.webContents);
 
   // DevTools は開発時のみ（環境変数で制御）
   if (process.env.NODE_ENV === 'development') {
@@ -157,7 +169,7 @@ function startPythonBackend() {
     // 本番モード: パッケージされたバックエンドを使用
     const resourcesPath = process.resourcesPath;
     pythonExecutable = path.join(resourcesPath, 'backend', 'server');
-    console.log('[Backend] Using packaged backend:', pythonExecutable);
+    log.info('[Backend] Using packaged backend:', pythonExecutable);
   } else {
     // 開発モード: venv内のPythonを優先して使用
     const backendDir = path.join(__dirname, '../../backend');
@@ -165,10 +177,10 @@ function startPythonBackend() {
     
     if (fs.existsSync(venvPython)) {
       pythonExecutable = venvPython;
-      console.log('[Backend] Using venv Python:', venvPython);
+      log.info('[Backend] Using venv Python:', venvPython);
     } else {
       pythonExecutable = 'python3';
-      console.log('[Backend] Using system Python (venv not found)');
+      log.info('[Backend] Using system Python (venv not found)');
     }
     
     pythonArgs = [path.join(backendDir, 'server.py')];
@@ -185,15 +197,15 @@ function startPythonBackend() {
   });
 
   pythonProcess.stdout.on('data', (data) => {
-    console.log(`[Python] ${data}`);
+    log.info(`[Python] ${data}`);
   });
 
   pythonProcess.stderr.on('data', (data) => {
-    console.error(`[Python Error] ${data}`);
+    log.error(`[Python Error] ${data}`);
   });
 
   pythonProcess.on('close', (code) => {
-    console.log(`Python process exited with code ${code}`);
+    log.info(`Python process exited with code ${code}`);
   });
 }
 
@@ -211,37 +223,10 @@ async function detectMeeting() {
     const window = await activeWin();
     if (!window) return;
 
-    const title = (window.title || '').toLowerCase();
-    const owner = (window.owner?.name || '').toLowerCase();
-
-    // デバッグ用（開発時）
-    // console.log(`Active window: ${window.title} | Owner: ${owner}`);
-
-    // 検知パターン
-    const meetingPatterns = [
-      { 
-        name: 'Zoom', 
-        check: (t, o) => o.includes('zoom') || t.includes('zoom meeting')
-      },
-      { 
-        name: 'Google Meet', 
-        check: (t, o) => {
-          const isBrowser = ['chrome', 'edge', 'brave', 'firefox', 'chromium'].some(b => o.includes(b));
-          const isMeet = t.includes('meet') && (t.includes('google meet') || t.includes('meet.google.com') || /meet\s*-\s*[a-z]{3}-[a-z]{4}-[a-z]{3}/.test(t));
-          return isBrowser && isMeet;
-        }
-      },
-      { 
-        name: 'Microsoft Teams', 
-        check: (t, o) => o.includes('teams') || t.includes('microsoft teams') || t.includes('teams meeting')
-      }
-    ];
-
-    for (const pattern of meetingPatterns) {
-      if (pattern.check(title, owner)) {
-        notifyMeetingDetected(pattern.name, window.title);
-        return;
-      }
+    const result = detectMeetingApp(window.title, window.owner?.name);
+    if (result) {
+      notifyMeetingDetected(result.name, window.title);
+      return;
     }
 
     // 検知されなくなったらリセット
@@ -258,7 +243,7 @@ async function detectMeeting() {
                          errorMsg.includes('Unexpected');
     
     if (!isKnownError) {
-      console.error('Detection error:', error);
+      log.error('Detection error:', error.message);
     }
     // 既知のエラーは無視して処理を継続
   }
@@ -269,7 +254,7 @@ function notifyMeetingDetected(appName, windowTitle) {
   if (lastDetectedApp === appName) return;
   
   lastDetectedApp = appName;
-  console.log(`Meeting detected: ${appName}`);
+  log.info(`Meeting detected: ${appName}`);
   
   // システム通知を表示
   if (Notification.isSupported()) {
@@ -305,7 +290,7 @@ function notifyMeetingDetected(appName, windowTitle) {
 function startMeetingDetection() {
   if (detectionInterval) return;
   
-  console.log('Starting meeting detection...');
+  log.info('Starting meeting detection...');
   detectionInterval = setInterval(detectMeeting, 2000); // 2秒ごとにチェック
   detectMeeting(); // 即座に1回実行
 }
@@ -314,7 +299,7 @@ function stopMeetingDetection() {
   if (detectionInterval) {
     clearInterval(detectionInterval);
     detectionInterval = null;
-    console.log('Meeting detection stopped');
+    log.info('Meeting detection stopped');
   }
 }
 
@@ -365,10 +350,10 @@ ipcMain.handle('start-recording', async (event, options) => {
     });
     
     const result = await response.json();
-    console.log('Recording started:', result);
+    log.info('Recording started:', JSON.stringify(result));
     return result;
   } catch (error) {
-    console.error('Failed to start recording:', error);
+    log.error('Failed to start recording:', error.message);
     return { success: false, message: error.message };
   }
 });
@@ -380,10 +365,10 @@ ipcMain.handle('stop-recording', async () => {
     });
     
     const result = await response.json();
-    console.log('Recording stopped:', result);
+    log.info('Recording stopped:', JSON.stringify(result));
     return result;
   } catch (error) {
-    console.error('Failed to stop recording:', error);
+    log.error('Failed to stop recording:', error.message);
     return { success: false, message: error.message };
   }
 });

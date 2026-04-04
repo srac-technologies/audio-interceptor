@@ -11,7 +11,8 @@
     "build:linux": "electron-builder --linux",
     "build:mac": "electron-builder --mac",
     "build:win": "electron-builder --win",
-    "build:all": "electron-builder -mwl"
+    "build:all": "electron-builder -mwl",
+    "test": "jest --verbose"
   },
   "keywords": [
     "electron",
@@ -23,8 +24,10 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "@jest/globals": "^30.3.0",
     "electron": "^40.1.0",
-    "electron-builder": "^26.7.0"
+    "electron-builder": "^26.7.0",
+    "jest": "^30.3.0"
   },
   "dependencies": {
     "active-win": "^8.2.0"
