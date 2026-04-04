@@ -99,6 +99,15 @@ def init_db():
         'research_buffer_size': '2',  # バッファサイズ（発言数）
         'research_target_sources': 'speaker',  # speaker, mic, both
         'research_transcription_refinement': 'false',  # 文字起こし精度向上
+        # 文字起こしエンジン設定
+        'transcription_engine': 'faster-whisper',  # faster-whisper, openai-whisper, google-speech, kotoba-whisper, azure-speech
+        'transcription_model': 'small',  # エンジン固有のモデル名
+        'transcription_language': 'ja',  # ja, en, auto
+        # 精度向上LLMプロバイダ設定
+        'refinement_provider': 'openai',  # openai, claude, gemini, ollama
+        'refinement_model': '',  # プロバイダ固有のモデル名（空=デフォルト）
+        # 専門用語辞書
+        'custom_dictionary': '',  # 改行区切りの用語リスト
     }
     
     for key, value in default_settings.items():
