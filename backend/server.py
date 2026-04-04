@@ -173,19 +173,11 @@ async def get_status():
     }
 
 @app.get("/sinks")
-async def get_available_sinks():
-    import subprocess
+async def get_available_sinks_endpoint():
+    from audio_interceptor import create_audio_backend
     try:
-        result = subprocess.run(
-            ["pactl", "list", "short", "sinks"],
-            capture_output=True, text=True
-        )
-        if result.returncode != 0: return {"sinks": []}
-        sinks = []
-        for line in result.stdout.strip().split('\n'):
-            parts = line.split('\t')
-            if len(parts) >= 2:
-                sinks.append({"id": parts[0], "name": parts[1]})
+        backend = create_audio_backend()
+        sinks = backend.get_available_sinks()
         return {"sinks": sinks}
     except Exception:
         return {"sinks": []}
