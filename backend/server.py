@@ -190,18 +190,29 @@ async def get_available_sinks():
     except Exception:
         return {"sinks": []}
 
-def on_transcript_callback(source, text):
+def on_transcript_callback(source, text, utterance_id=0, is_final=True):
+    """文字起こしコールバック（VAD統合版）
+
+    Args:
+        source: "speaker" or "mic"
+        text: 文字起こしテキスト
+        utterance_id: 発言ID（同一発言のinterim/finalを紐づけ）
+        is_final: True=VAD発言終了後の確定版, False=チャンクベースの中間版
+    """
     if state.loop and state.loop.is_running():
-        if state.current_session_id:
+        # DBにはfinalのみ保存（interimは一時的な表示用）
+        if is_final and state.current_session_id:
             try:
                 database.add_transcript(state.current_session_id, source, text)
             except Exception as e:
                 print(f"Failed to save transcript: {e}")
 
-        asyncio.run_coroutine_threadsafe(broadcast_transcript(source, text), state.loop)
-        
-        if state.llm_pipeline:
-            # スピーカーのみリサーチ対象
+        asyncio.run_coroutine_threadsafe(
+            broadcast_transcript(source, text, utterance_id, is_final), state.loop
+        )
+
+        # LLMパイプラインにはfinalのみ送信
+        if is_final and state.llm_pipeline:
             if source.lower() == "speaker":
                 print(f"🔊 [SPEAKER] Sending to LLM pipeline: {text[:50]}...")
             else:
@@ -503,8 +514,14 @@ async def broadcast_status(status: str):
     message = json.dumps({"type": "status", "status": status, "recording": state.recording})
     await broadcast(message)
 
-async def broadcast_transcript(source: str, text: str):
-    message = json.dumps({"type": "transcript", "source": source, "text": text})
+async def broadcast_transcript(source: str, text: str, utterance_id: int = 0, is_final: bool = True):
+    message = json.dumps({
+        "type": "transcript",
+        "source": source,
+        "text": text,
+        "utterance_id": f"{source}_{utterance_id}",
+        "is_final": is_final
+    })
     await broadcast(message)
 
 async def broadcast_research(research_data: dict):
