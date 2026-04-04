@@ -36,6 +36,12 @@ def init_db():
     except sqlite3.OperationalError:
         pass # すでに存在する
 
+    # recording_pathカラムのマイグレーション
+    try:
+        cursor.execute('ALTER TABLE sessions ADD COLUMN recording_path TEXT')
+    except sqlite3.OperationalError:
+        pass # すでに存在する
+
     # トランスクリプトテーブル
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS transcripts (
@@ -347,6 +353,14 @@ def save_summary(session_id: int, summary_text: str):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('UPDATE sessions SET summary = ? WHERE id = ?', (summary_text, session_id))
+    conn.commit()
+    conn.close()
+
+def save_recording_path(session_id: int, recording_path: str):
+    """セッションに録音ファイルパスを保存"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE sessions SET recording_path = ? WHERE id = ?', (recording_path, session_id))
     conn.commit()
     conn.close()
 
