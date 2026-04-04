@@ -20,8 +20,6 @@ from research_orchestrator import (
 )
 from refinement_providers import create_refinement_provider, RefinementProvider
 
-# ロガー設定
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("LLM_Pipeline")
 
 class LLMPipeline:

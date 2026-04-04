@@ -1,9 +1,12 @@
 import os
+import logging
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+
+logger = logging.getLogger(__name__)
 
 SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
 
@@ -19,9 +22,9 @@ class CalendarService:
                     scopes=SCOPES
                 )
                 self.service = build('calendar', 'v3', credentials=credentials)
-                print(f"✅ Google Calendar service initialized (Service Account)")
+                logger.info("Google Calendar service initialized (Service Account)")
             except Exception as e:
-                print(f"⚠️ Failed to initialize Calendar service: {e}")
+                logger.warning("Failed to initialize Calendar service: %s", e)
     
     def get_current_event(self, calendar_id: str = 'primary', time_window_minutes: int = 30) -> Optional[Dict]:
         """現在時刻の前後N分以内のイベントを取得"""
@@ -82,7 +85,7 @@ class CalendarService:
             return None
             
         except HttpError as error:
-            print(f'❌ Calendar API error: {error}')
+            logger.error("Calendar API error: %s", error)
             return None
     
     def get_concurrent_events(self, calendar_id: str = 'primary', buffer_minutes: int = 15) -> List[Dict]:
@@ -124,7 +127,7 @@ class CalendarService:
             return result
 
         except HttpError as error:
-            print(f'❌ Calendar API error: {error}')
+            logger.error("Calendar API error: %s", error)
             return []
 
     def get_events_today(self, calendar_id: str = 'primary') -> List[Dict]:
@@ -155,7 +158,7 @@ class CalendarService:
             } for event in events]
             
         except HttpError as error:
-            print(f'❌ Calendar API error: {error}')
+            logger.error("Calendar API error: %s", error)
             return []
 
 # グローバルインスタンス

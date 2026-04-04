@@ -4,6 +4,42 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 const activeWin = require('active-win');
 
+// --- Logging ---
+// Electron メインプロセスのログをファイルに永続化
+const logDir = app.isPackaged
+  ? path.join(app.getPath('userData'), 'logs')
+  : path.join(__dirname, '../../backend/logs');
+
+if (!fs.existsSync(logDir)) {
+  fs.mkdirSync(logDir, { recursive: true });
+}
+
+const logStream = fs.createWriteStream(path.join(logDir, 'electron-main.log'), { flags: 'a' });
+
+function formatLog(level, ...args) {
+  const ts = new Date().toISOString();
+  return `${ts} [${level}] ${args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ')}\n`;
+}
+
+const originalConsoleLog = console.log;
+const originalConsoleError = console.error;
+const originalConsoleWarn = console.warn;
+
+console.log = (...args) => {
+  logStream.write(formatLog('INFO', ...args));
+  originalConsoleLog.apply(console, args);
+};
+
+console.error = (...args) => {
+  logStream.write(formatLog('ERROR', ...args));
+  originalConsoleError.apply(console, args);
+};
+
+console.warn = (...args) => {
+  logStream.write(formatLog('WARN', ...args));
+  originalConsoleWarn.apply(console, args);
+};
+
 let mainWindow = null;
 let pythonProcess = null;
 let detectionInterval = null;
@@ -59,6 +95,13 @@ function createWindow() {
 
   // 開発中は簡易HTMLをロード
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+
+  // レンダラープロセスのコンソールログを main プロセスに中継
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    const levels = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
+    const levelStr = levels[level] || 'INFO';
+    console.log(`[Renderer/${levelStr}] ${message}`);
+  });
 
   // DevTools は開発時のみ（環境変数で制御）
   if (process.env.NODE_ENV === 'development') {

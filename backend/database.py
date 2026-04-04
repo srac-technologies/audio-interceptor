@@ -1,7 +1,10 @@
 import sqlite3
 import os
+import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'meeting_assistant.db')
 
@@ -155,11 +158,11 @@ def init_db():
 
     conn.commit()
     conn.close()
-    print("✅ Database initialized")
+    logger.info("Database initialized: %s", DB_PATH)
 
 def seed_data(cursor):
     """初期データの投入"""
-    print("🌱 Seeding initial data...")
+    logger.info("Seeding initial data...")
     # 1. 商談・セールス
     cursor.execute('INSERT INTO meeting_types (name, description) VALUES (?, ?)', ('商談・セールス', '製品やサービスの提案、価格交渉'))
     sales_id = cursor.lastrowid
