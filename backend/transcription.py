@@ -46,7 +46,8 @@ class TranscriptionService:
             self.engine_id = settings["transcription_engine"]
         else:
             # レガシー: WHISPER_MODE から変換
-            self.engine_id = "openai-whisper" if WHISPER_MODE == "api" else "faster-whisper"
+            mode_map = {"api": "openai-whisper", "moonshine": "moonshine-tiny-ja"}
+            self.engine_id = mode_map.get(WHISPER_MODE, "faster-whisper")
 
         # エンジン固有オプションの構築
         self.language = WHISPER_LANGUAGE if WHISPER_LANGUAGE != "auto" else None
@@ -92,6 +93,11 @@ class TranscriptionService:
             if settings and settings.get("kotoba_whisper_model"):
                 kotoba_model = settings["kotoba_whisper_model"]
             kwargs["model"] = kotoba_model
+        elif self.engine_id == "moonshine-tiny-ja":
+            moonshine_model = "UsefulSensors/moonshine-tiny-ja"
+            if settings and settings.get("moonshine_model"):
+                moonshine_model = settings["moonshine_model"]
+            kwargs["model"] = moonshine_model
 
         return kwargs
 

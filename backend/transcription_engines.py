@@ -306,6 +306,62 @@ class KotobaWhisperEngine(TranscriptionEngine):
             return False
 
 
+class MoonshineTinyJaEngine(TranscriptionEngine):
+    """Moonshine Tiny JA（日本語特化・超軽量モデル）"""
+
+    name = "moonshine-tiny-ja"
+    description = "Moonshine Tiny JA - 日本語特化、27Mパラメータ、ローカル実行"
+
+    def __init__(self, model: str = "UsefulSensors/moonshine-tiny-ja"):
+        self.model_name = model
+        self.pipe = None
+        self._init_model()
+
+    def _init_model(self):
+        import torch
+        from transformers import pipeline
+
+        device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+
+        logger.info(f"Loading Moonshine Tiny JA: {self.model_name} on {device}")
+        self.pipe = pipeline(
+            "automatic-speech-recognition",
+            model=self.model_name,
+            torch_dtype=torch_dtype,
+            device=device,
+        )
+        logger.info("Moonshine Tiny JA model loaded")
+
+    async def transcribe(self, audio_path: str, language: Optional[str] = None) -> Dict[str, Any]:
+        import librosa
+
+        # Moonshineは16kHz入力を想定
+        audio_array, sr = librosa.load(audio_path, sr=16000)
+        duration = len(audio_array) / sr
+
+        result = self.pipe(
+            {"raw": audio_array, "sampling_rate": 16000},
+        )
+
+        return {
+            "text": result["text"].strip(),
+            "language": "ja",
+            "duration": duration,
+            "segments": [],
+            "engine": self.name,
+        }
+
+    @classmethod
+    def is_available(cls) -> bool:
+        try:
+            import transformers  # noqa: F401
+            import torch  # noqa: F401
+            return True
+        except ImportError:
+            return False
+
+
 class AzureSpeechEngine(TranscriptionEngine):
     """Azure Speech Services"""
 
@@ -387,6 +443,7 @@ ENGINE_REGISTRY: Dict[str, type] = {
     "google-speech": GoogleSpeechEngine,
     "kotoba-whisper": KotobaWhisperEngine,
     "azure-speech": AzureSpeechEngine,
+    "moonshine-tiny-ja": MoonshineTinyJaEngine,
 }
 
 
