@@ -88,7 +88,7 @@ function handleMessage(msg) {
       handleStatus(msg);
       break;
     case 'transcript':
-      addTranscript(msg.source, msg.text);
+      handleTranscript(msg);
       break;
     case 'advice':
       addResearch(msg.trigger, msg.text, msg.timestamp);
@@ -111,20 +111,60 @@ function handleStatus(msg) {
   }
 }
 
-// --- 文字起こし表示 ---
-function addTranscript(source, text) {
+// --- 文字起こし表示 (VAD統合版) ---
+
+/**
+ * transcript メッセージを処理
+ * - interim (is_final=false): 発言中の中間結果。同一utterance_idの既存interimを置換
+ * - final (is_final=true): VAD発言終了後の確定結果。同一utterance_idのinterimを全て削除して置換
+ */
+function handleTranscript(msg) {
+  const { source, text, utterance_id, is_final } = msg;
+
+  // utterance_id がない場合は従来互換（常にfinal扱い）
+  if (!utterance_id) {
+    addTranscriptEntry(source, text, null, true);
+    return;
+  }
+
+  if (is_final) {
+    // finalが来たら、同一utterance_idのinterimを全て削除
+    removeInterimEntries(utterance_id);
+    addTranscriptEntry(source, text, utterance_id, true);
+  } else {
+    // interimは同一utterance_idの既存interimを置換（最新のinterimだけ表示）
+    removeInterimEntries(utterance_id);
+    addTranscriptEntry(source, text, utterance_id, false);
+  }
+}
+
+function addTranscriptEntry(source, text, utteranceId, isFinal) {
   clearEmptyState(panelTranscript);
 
   const entry = document.createElement('div');
-  entry.className = 'transcript-entry';
+  entry.className = `transcript-entry ${isFinal ? 'final' : 'interim'}`;
+  if (utteranceId) {
+    entry.dataset.utteranceId = utteranceId;
+  }
+  entry.dataset.isFinal = isFinal;
   entry.innerHTML = `<span class="source">[${escapeHtml(source)}]</span> <span class="text">${escapeHtml(text)}</span>`;
   panelTranscript.appendChild(entry);
 
-  transcriptCount++;
-  transcriptBadge.textContent = transcriptCount;
+  // finalのみカウント
+  if (isFinal) {
+    transcriptCount++;
+    transcriptBadge.textContent = transcriptCount;
+  }
 
   // 自動スクロール
   panelTranscript.scrollTop = panelTranscript.scrollHeight;
+}
+
+function removeInterimEntries(utteranceId) {
+  const entries = panelTranscript.querySelectorAll(
+    `.transcript-entry.interim[data-utterance-id="${utteranceId}"]`
+  );
+  entries.forEach((el) => el.remove());
 }
 
 // --- リサーチ表示 ---

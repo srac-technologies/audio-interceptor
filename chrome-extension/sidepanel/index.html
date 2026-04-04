@@ -232,6 +232,23 @@
       color: #ccc;
     }
 
+    .transcript-entry.interim {
+      opacity: 0.6;
+      border-left: 2px solid rgba(255, 200, 50, 0.4);
+      padding-left: 8px;
+    }
+
+    .transcript-entry.interim .source::after {
+      content: ' (interim)';
+      color: #cc9933;
+      font-size: 0.65rem;
+    }
+
+    .transcript-entry.final {
+      border-left: 2px solid rgba(0, 255, 170, 0.3);
+      padding-left: 8px;
+    }
+
     /* リサーチエントリ */
     .research-entry {
       padding: 8px 10px;
