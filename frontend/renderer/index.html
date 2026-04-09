@@ -596,6 +596,7 @@
       
       <div class="tabs">
           <div class="tab active" data-tab="general">一般設定</div>
+          <div class="tab" data-tab="api-keys">APIキー</div>
           <div class="tab" data-tab="research-sources">リサーチソース</div>
           <div class="tab" data-tab="transcription">文字起こし</div>
           <div class="tab" data-tab="meeting-types">会議種別・プロンプト</div>
@@ -698,6 +699,104 @@
           </div>
       </div>
 
+      <!-- APIキータブ -->
+      <div id="tab-api-keys" class="tab-content">
+          <div style="font-size: 0.85rem; color: #888; margin-bottom: 15px;">
+              APIキーはアプリ内のデータベースに保存されます。.envファイルは不要です。
+          </div>
+
+          <h3 style="margin-bottom: 15px; color: #00ffaa;">基本（文字起こし・リサーチ）</h3>
+
+          <div class="form-group">
+              <label>OpenAI API Key</label>
+              <input type="password" id="settingOpenaiApiKey" placeholder="sk-...">
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">Whisper API、GPT-4o-mini リサーチ、精度向上に使用</div>
+          </div>
+
+          <div class="form-group">
+              <label>Anthropic API Key</label>
+              <input type="password" id="settingAnthropicApiKey" placeholder="sk-ant-...">
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">Claude による精度向上に使用（オプション）</div>
+          </div>
+
+          <div class="form-group">
+              <label>Google AI API Key (Gemini)</label>
+              <input type="password" id="settingGoogleAiApiKey" placeholder="AIza...">
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">Gemini による精度向上に使用（オプション）</div>
+          </div>
+
+          <hr style="margin: 20px 0; border: none; border-top: 1px solid rgba(255,255,255,0.1);">
+          <h3 style="margin-bottom: 15px; color: #00ffaa;">Google Cloud / Calendar</h3>
+
+          <div class="form-group">
+              <label>Google Service Account File</label>
+              <input type="text" id="settingGoogleServiceAccountFile" placeholder="/path/to/service-account.json">
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">Google Calendar 連携用サービスアカウントJSONファイルのパス</div>
+          </div>
+
+          <div class="form-group">
+              <label>Google Application Credentials</label>
+              <input type="text" id="settingGoogleApplicationCredentials" placeholder="/path/to/credentials.json">
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">Google Cloud Speech-to-Text 用の認証ファイルパス</div>
+          </div>
+
+          <hr style="margin: 20px 0; border: none; border-top: 1px solid rgba(255,255,255,0.1);">
+          <h3 style="margin-bottom: 15px; color: #00ffaa;">Azure</h3>
+
+          <div class="form-group">
+              <label>Azure Speech Key</label>
+              <input type="password" id="settingAzureSpeechKey" placeholder="">
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">Azure Speech Services のサブスクリプションキー</div>
+          </div>
+
+          <div class="form-group">
+              <label>Azure Speech Region</label>
+              <input type="text" id="settingAzureSpeechRegion" placeholder="japaneast">
+          </div>
+
+          <hr style="margin: 20px 0; border: none; border-top: 1px solid rgba(255,255,255,0.1);">
+          <h3 style="margin-bottom: 15px; color: #00ffaa;">リサーチソース</h3>
+
+          <div class="form-group">
+              <label>Brave Search API Key</label>
+              <input type="password" id="settingBraveApiKey" placeholder="BSA...">
+          </div>
+
+          <div class="form-group">
+              <label>Tavily API Key</label>
+              <input type="password" id="settingTavilyApiKey" placeholder="tvly-...">
+          </div>
+
+          <div class="form-group">
+              <label>Perplexity API Key</label>
+              <input type="password" id="settingPerplexityApiKey" placeholder="pplx-...">
+          </div>
+
+          <div class="form-group">
+              <label>Google Custom Search API Key</label>
+              <input type="password" id="settingGoogleCseApiKey" placeholder="">
+          </div>
+
+          <div class="form-group">
+              <label>Google Custom Search Engine ID (CX)</label>
+              <input type="text" id="settingGoogleCseCx" placeholder="">
+          </div>
+
+          <div class="form-group">
+              <label>LightPanda API Key</label>
+              <input type="password" id="settingLightpandaApiKey" placeholder="">
+          </div>
+
+          <div class="form-group">
+              <label>Limitless API Key</label>
+              <input type="password" id="settingLimitlessApiKey" placeholder="">
+          </div>
+
+          <div style="margin-top: 20px; text-align: right;">
+              <button id="saveApiKeysBtn" style="background: #48bb78; color: white; width: auto; padding: 10px 30px;">APIキーを保存</button>
+          </div>
+      </div>
+
       <!-- リサーチソースタブ -->
       <div id="tab-research-sources" class="tab-content">
           <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
@@ -705,7 +804,7 @@
               <button id="addSourceBtn" style="width: auto; padding: 6px 16px; background: #48bb78; color: white;">+ ソース追加</button>
           </div>
           <div style="font-size: 0.8rem; color: #888; margin-bottom: 15px;">
-              ソースの有効/無効、優先度（1=最高〜10=最低）を設定できます。組み込みソースは環境変数でAPIキーを設定してください。
+              ソースの有効/無効、優先度（1=最高〜10=最低）を設定できます。組み込みソースのAPIキーは「APIキー」タブで設定してください。
           </div>
           <div id="researchSourceList" style="max-height: 400px; overflow-y: auto;"></div>
 
@@ -1464,6 +1563,22 @@
         document.getElementById('settingRefinementModel').value = s.refinement_model || '';
         document.getElementById('settingCustomDictionary').value = s.custom_dictionary || '';
 
+        // APIキー設定
+        document.getElementById('settingOpenaiApiKey').value = s.openai_api_key || '';
+        document.getElementById('settingAnthropicApiKey').value = s.anthropic_api_key || '';
+        document.getElementById('settingGoogleAiApiKey').value = s.google_ai_api_key || '';
+        document.getElementById('settingGoogleServiceAccountFile').value = s.google_service_account_file || '';
+        document.getElementById('settingGoogleApplicationCredentials').value = s.google_application_credentials || '';
+        document.getElementById('settingAzureSpeechKey').value = s.azure_speech_key || '';
+        document.getElementById('settingAzureSpeechRegion').value = s.azure_speech_region || '';
+        document.getElementById('settingBraveApiKey').value = s.brave_api_key || '';
+        document.getElementById('settingTavilyApiKey').value = s.tavily_api_key || '';
+        document.getElementById('settingPerplexityApiKey').value = s.perplexity_api_key || '';
+        document.getElementById('settingGoogleCseApiKey').value = s.google_cse_api_key || '';
+        document.getElementById('settingGoogleCseCx').value = s.google_cse_cx || '';
+        document.getElementById('settingLightpandaApiKey').value = s.lightpanda_api_key || '';
+        document.getElementById('settingLimitlessApiKey').value = s.limitless_api_key || '';
+
         // エンジン・プロバイダの利用可否を表示
         loadEngineAvailability();
         loadProviderAvailability();
@@ -1541,6 +1656,35 @@
         // 一般タブ側のチェックボックスも同期
         document.getElementById('settingResearchRefinement').checked = refinementEnabled;
         alert('文字起こし設定を保存しました！\n\nエンジン変更は次回録音開始時から反映されます。');
+    });
+
+    document.getElementById('saveApiKeysBtn').addEventListener('click', async () => {
+        const settings = {
+            openai_api_key: document.getElementById('settingOpenaiApiKey').value,
+            anthropic_api_key: document.getElementById('settingAnthropicApiKey').value,
+            google_ai_api_key: document.getElementById('settingGoogleAiApiKey').value,
+            google_service_account_file: document.getElementById('settingGoogleServiceAccountFile').value,
+            google_application_credentials: document.getElementById('settingGoogleApplicationCredentials').value,
+            azure_speech_key: document.getElementById('settingAzureSpeechKey').value,
+            azure_speech_region: document.getElementById('settingAzureSpeechRegion').value,
+            brave_api_key: document.getElementById('settingBraveApiKey').value,
+            tavily_api_key: document.getElementById('settingTavilyApiKey').value,
+            perplexity_api_key: document.getElementById('settingPerplexityApiKey').value,
+            google_cse_api_key: document.getElementById('settingGoogleCseApiKey').value,
+            google_cse_cx: document.getElementById('settingGoogleCseCx').value,
+            lightpanda_api_key: document.getElementById('settingLightpandaApiKey').value,
+            limitless_api_key: document.getElementById('settingLimitlessApiKey').value,
+        };
+
+        await fetch('http://localhost:8000/settings', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({settings})
+        });
+        // エンジン・プロバイダの利用可否を再チェック
+        loadEngineAvailability();
+        loadProviderAvailability();
+        alert('APIキーを保存しました！');
     });
 
     // 会議種別管理（簡易版）

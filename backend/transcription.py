@@ -8,26 +8,16 @@ Transcription Service - 複数エンジン対応の文字起こしサービス
 import os
 import logging
 from typing import Optional, Dict, Any
-from pathlib import Path
-from dotenv import load_dotenv
 
 from transcription_engines import (
     TranscriptionEngine,
     create_engine,
     get_available_engines,
     ENGINE_REGISTRY,
+    strip_cjk_spaces,
 )
 
-# .envファイルのパスを明示的に指定
-env_path = Path(__file__).parent / '.env'
-load_dotenv(dotenv_path=env_path)
-
 logger = logging.getLogger(__name__)
-
-# レガシー環境変数（フォールバック用）
-WHISPER_MODE = os.getenv("WHISPER_MODE", "local")
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
-WHISPER_LANGUAGE = os.getenv("WHISPER_LANGUAGE", "ja")
 
 
 class TranscriptionService:
@@ -36,8 +26,8 @@ class TranscriptionService:
     def __init__(self, engine_id: Optional[str] = None, settings: Optional[Dict[str, str]] = None):
         """
         Args:
-            engine_id: エンジンID（省略時はsettings or 環境変数から決定）
-            settings: DB設定（省略時はレガシー環境変数を使用）
+            engine_id: エンジンID（省略時はsettingsから決定）
+            settings: DB設定
         """
         # エンジンIDの決定
         if engine_id:
@@ -45,15 +35,11 @@ class TranscriptionService:
         elif settings and settings.get("transcription_engine"):
             self.engine_id = settings["transcription_engine"]
         else:
-            # レガシー: WHISPER_MODE から変換
-            mode_map = {"api": "openai-whisper", "moonshine": "moonshine-tiny-ja"}
-            self.engine_id = mode_map.get(WHISPER_MODE, "faster-whisper")
+            self.engine_id = "faster-whisper"
 
-        # エンジン固有オプションの構築
-        self.language = WHISPER_LANGUAGE if WHISPER_LANGUAGE != "auto" else None
-        if settings and settings.get("transcription_language"):
-            lang = settings["transcription_language"]
-            self.language = lang if lang != "auto" else None
+        # 言語設定
+        lang = (settings or {}).get("transcription_language", "ja")
+        self.language = lang if lang != "auto" else None
 
         engine_kwargs = self._build_engine_kwargs(settings)
 
@@ -75,9 +61,7 @@ class TranscriptionService:
     def _build_engine_kwargs(self, settings: Optional[Dict[str, str]] = None) -> dict:
         """エンジン初期化用のkwargsを構築"""
         kwargs = {}
-        model = WHISPER_MODEL
-        if settings and settings.get("transcription_model"):
-            model = settings["transcription_model"]
+        model = (settings or {}).get("transcription_model", "small")
 
         if self.engine_id == "faster-whisper":
             kwargs["model"] = model
@@ -115,7 +99,14 @@ class TranscriptionService:
         if not os.path.exists(audio_path):
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
-        return await self.engine.transcribe(audio_path, language=self.language)
+        result = await self.engine.transcribe(audio_path, language=self.language)
+
+        # 日本語テキストのCJK文字間の不要スペースを除去
+        result["text"] = strip_cjk_spaces(result["text"])
+        for seg in result.get("segments", []):
+            seg["text"] = strip_cjk_spaces(seg["text"])
+
+        return result
 
 
 # シングルトンインスタンス

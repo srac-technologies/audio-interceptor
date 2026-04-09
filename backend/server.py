@@ -39,15 +39,40 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# .envファイルを読み込む
-try:
-    from dotenv import load_dotenv
-    config_dir = os.getenv('MEETING_ASSISTANT_CONFIG_DIR', os.path.dirname(__file__))
-    env_path = os.path.join(config_dir, '.env')
-    load_dotenv(env_path)
-    logger.info("Config directory: %s", config_dir)
-except ImportError:
-    pass
+# APIキー設定をDBからos.environに同期する
+# .envファイルは不要。すべてUIから設定可能。
+_API_KEY_SETTINGS = {
+    'openai_api_key': 'OPENAI_API_KEY',
+    'anthropic_api_key': 'ANTHROPIC_API_KEY',
+    'google_ai_api_key': 'GOOGLE_AI_API_KEY',
+    'google_application_credentials': 'GOOGLE_APPLICATION_CREDENTIALS',
+    'google_service_account_file': 'GOOGLE_SERVICE_ACCOUNT_FILE',
+    'azure_speech_key': 'AZURE_SPEECH_KEY',
+    'azure_speech_region': 'AZURE_SPEECH_REGION',
+    'brave_api_key': 'BRAVE_API_KEY',
+    'tavily_api_key': 'TAVILY_API_KEY',
+    'perplexity_api_key': 'PERPLEXITY_API_KEY',
+    'google_cse_api_key': 'GOOGLE_CSE_API_KEY',
+    'google_cse_cx': 'GOOGLE_CSE_CX',
+    'lightpanda_api_key': 'LIGHTPANDA_API_KEY',
+    'limitless_api_key': 'LIMITLESS_API_KEY',
+}
+
+def sync_api_keys_to_env():
+    """DB設定のAPIキーをos.environに反映する"""
+    try:
+        import database
+        settings = database.get_settings()
+        for db_key, env_key in _API_KEY_SETTINGS.items():
+            value = settings.get(db_key, '')
+            if value:
+                os.environ[env_key] = value
+            elif env_key not in os.environ:
+                # DBに値がなく、既存のenv varもない場合はスキップ
+                pass
+        logger.info("API keys synced from DB to environment")
+    except Exception as e:
+        logger.warning("Failed to sync API keys from DB: %s", e)
 
 try:
     from fastapi import FastAPI, WebSocket, HTTPException, BackgroundTasks
@@ -91,6 +116,9 @@ async def lifespan(app: FastAPI):
     # 起動時
     logger.info("Initializing database...")
     database.init_db()
+
+    # DBのAPIキー設定をos.environに反映
+    sync_api_keys_to_env()
 
     state.loop = asyncio.get_running_loop()
     logger.info("Event loop captured")
@@ -613,6 +641,9 @@ async def update_settings(update: SettingsUpdate):
     try:
         for key, value in update.settings.items():
             database.update_setting(key, value)
+        # APIキー設定が変更されたらos.environに反映
+        if set(update.settings.keys()) & set(_API_KEY_SETTINGS.keys()):
+            sync_api_keys_to_env()
         # エンジン関連の設定が変更されたらシングルトンをリセット
         engine_keys = {"transcription_engine", "transcription_model", "transcription_language"}
         if engine_keys & set(update.settings.keys()):

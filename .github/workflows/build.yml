@@ -1,0 +1,137 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            backend_binary: server
+            build_script: build.sh
+          - os: macos-latest
+            platform: mac
+            backend_binary: server
+            build_script: build-macos.sh
+          - os: windows-latest
+            platform: win
+            backend_binary: server.exe
+            build_script: build-windows.sh
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- Python Backend ---
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PulseAudio (Linux)
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y pulseaudio
+
+      - name: Install Python dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r requirements.txt
+
+      - name: Build backend (Linux/macOS)
+        if: matrix.platform != 'win'
+        working-directory: backend
+        run: |
+          pyinstaller --onefile \
+            --name server \
+            --add-data "meeting_assistant.db:." \
+            --hidden-import google.auth \
+            --hidden-import google.oauth2 \
+            --hidden-import googleapiclient \
+            --hidden-import openai \
+            --hidden-import fastapi \
+            --hidden-import uvicorn \
+            --hidden-import websockets \
+            --hidden-import sounddevice \
+            --hidden-import numpy \
+            server.py
+
+      - name: Build backend (Windows)
+        if: matrix.platform == 'win'
+        working-directory: backend
+        shell: bash
+        run: |
+          pyinstaller --onefile \
+            --name server \
+            --add-data "meeting_assistant.db;." \
+            --hidden-import google.auth \
+            --hidden-import google.oauth2 \
+            --hidden-import googleapiclient \
+            --hidden-import openai \
+            --hidden-import fastapi \
+            --hidden-import uvicorn \
+            --hidden-import websockets \
+            --hidden-import sounddevice \
+            --hidden-import numpy \
+            server.py
+
+      # --- Electron Frontend ---
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build Electron app
+        working-directory: frontend
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build:${{ matrix.platform }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: meeting-assistant-${{ matrix.platform }}
+          path: |
+            frontend/dist/*.AppImage
+            frontend/dist/*.deb
+            frontend/dist/*.dmg
+            frontend/dist/*.zip
+            frontend/dist/*.exe
+            frontend/dist/*.nsis
+          if-no-files-found: warn
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: artifacts/**/*

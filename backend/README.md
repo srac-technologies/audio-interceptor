@@ -8,33 +8,56 @@
 ./setup_venv.sh
 ```
 
-### 2. 環境変数を設定
-
-`.env`ファイルを作成：
-
-```bash
-cp .env.example .env
-```
-
-`.env`を編集してOpenAI APIキーを設定：
-
-```
-OPENAI_API_KEY=sk-proj-...
-```
-
-### 3. サーバーを起動
+### 2. サーバーを起動
 
 ```bash
 ./start_server.sh
 ```
 
-## 環境変数
+### 3. APIキーを設定
 
-`.env`ファイルに以下を設定できます：
+アプリ起動後、設定画面の「APIキー」タブからOpenAI APIキーなどを入力してください。
+設定はアプリ内のデータベースに保存されます（.envファイルは不要です）。
 
-| 変数名 | 説明 | 必須 |
-|--------|------|------|
-| `OPENAI_API_KEY` | OpenAI APIキー（文字起こし用） | 文字起こし機能を使う場合 |
+## プラットフォーム別の依存関係
+
+### Linux (PulseAudio/PipeWire)
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install pulseaudio pulseaudio-utils
+
+# Fedora
+sudo dnf install pulseaudio pulseaudio-utils
+
+# Arch
+sudo pacman -S pulseaudio pulseaudio-alsa
+```
+
+PipeWire環境では `pipewire-pulse` が必要です：
+
+```bash
+# Ubuntu 22.04+
+sudo apt-get install pipewire-pulse
+```
+
+### macOS
+
+仮想音声デバイスが必要です（スピーカー音声をキャプチャするため）：
+
+```bash
+# BlackHole（推奨）
+brew install blackhole-2ch
+```
+
+インストール後、Audio MIDI Setupで「複数出力装置」を作成し、BlackHoleとスピーカーの両方を含めてください。
+
+### Windows
+
+以下のいずれかの仮想音声デバイスが必要です：
+
+- **ステレオミキサー**: Windowsのサウンド設定で有効化（対応しているサウンドカードのみ）
+- **VB-Audio Virtual Cable**: https://vb-audio.com/Cable/ からダウンロード
 
 ## APIエンドポイント
 
@@ -73,25 +96,6 @@ OPENAI_API_KEY=sk-proj-...
 文字起こし結果はコンソールに出力されます：
 
 ```
-[Speaker 🔊] こんにちは
-[Mic 🎤] よろしくお願いします
+[Speaker] こんにちは
+[Mic] よろしくお願いします
 ```
-
-## トラブルシューティング
-
-### python-dotenv が見つからない
-
-```bash
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-### APIキーが無効
-
-`.env`ファイルのAPIキーを確認してください：
-
-```bash
-cat .env
-```
-
-サーバーを再起動すると新しい設定が反映されます。

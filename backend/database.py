@@ -146,6 +146,21 @@ def init_db():
         'refinement_model': '',  # プロバイダ固有のモデル名（空=デフォルト）
         # 専門用語辞書
         'custom_dictionary': '',  # 改行区切りの用語リスト
+        # APIキー（UIから設定。.envファイル不要）
+        'openai_api_key': '',
+        'anthropic_api_key': '',
+        'google_ai_api_key': '',
+        'google_application_credentials': '',  # Google Cloud 認証ファイルパス
+        'google_service_account_file': '',  # Google Calendar サービスアカウントファイル
+        'azure_speech_key': '',
+        'azure_speech_region': '',
+        'brave_api_key': '',
+        'tavily_api_key': '',
+        'perplexity_api_key': '',
+        'google_cse_api_key': '',
+        'google_cse_cx': '',
+        'lightpanda_api_key': '',
+        'limitless_api_key': '',
     }
     
     for key, value in default_settings.items():

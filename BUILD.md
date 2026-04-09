@@ -5,11 +5,11 @@ Meeting Assistant を配布可能なバイナリとしてビルドします。
 
 ## 前提条件
 
-- Python 3.8+
-- Node.js 18+
-- npm または bun
+- Python 3.10+
+- Node.js 20+
+- npm
 
-## ⚠️ 重要: クロスプラットフォームビルドの制約
+## クロスプラットフォームビルドの制約
 
 **PyInstallerの制約**: Pythonバックエンドは**各プラットフォーム上でビルドする必要があります**。
 
@@ -19,168 +19,113 @@ Meeting Assistant を配布可能なバイナリとしてビルドします。
 | macOS | macOS バイナリのみ |
 | Windows | Windows .exe のみ |
 
-つまり、全プラットフォーム向けにビルドするには、各OS上でビルド作業が必要です。
+GitHub Actions CI/CD（`.github/workflows/build.yml`）で各プラットフォームのビルドを自動化済みです。
 
-## プラットフォーム別ビルド手順
+## プラットフォーム別の依存関係
 
-### Linux用ビルド（Linux上で実行）
-
-```bash
-# 1. Pythonバックエンド
-cd backend
-./build.sh
-
-# 2. Electronアプリ
-cd ../frontend
-npm run build:linux
-```
-
-**成果物**:
-- `frontend/dist/Meeting Assistant-0.1.0.AppImage`
-- `frontend/dist/meeting-assistant_0.1.0_amd64.deb`
-
-### macOS用ビルド（macOS上で実行）
+### Linux
 
 ```bash
-# 1. Pythonバックエンド
-cd backend
-./build-macos.sh
+# 必須: PulseAudio (音声キャプチャ)
+sudo apt-get install pulseaudio pulseaudio-utils
 
-# 2. Electronアプリ
-cd ../frontend
-npm run build:mac
+# PipeWire環境の場合
+sudo apt-get install pipewire-pulse
 ```
 
-**成果物**:
-- `frontend/dist/Meeting Assistant-0.1.0.dmg`
-- `frontend/dist/Meeting Assistant-0.1.0-mac.zip`
+### macOS
 
-### Windows用ビルド（Windows上で実行）
+仮想音声デバイスが必要（スピーカー音声をキャプチャするため）：
 
 ```bash
-# 1. Pythonバックエンド（PowerShellまたはコマンドプロンプト）
-cd backend
-python -m venv venv
-venv\Scripts\activate
-pip install pyinstaller
-pyinstaller --onefile --name server.exe server.py
-
-# 2. Electronアプリ
-cd ..\frontend
-npm run build:win
+brew install blackhole-2ch
 ```
 
-**成果物**:
-- `frontend/dist/Meeting Assistant Setup 0.1.0.exe`
-- `frontend/dist/Meeting Assistant 0.1.0.exe` (portable)
+インストール後、Audio MIDI Setup で「複数出力装置」を作成し、BlackHole とスピーカーを含めてください。
 
-## 配布
+### Windows
 
-生成された AppImage または deb ファイルを配布してください。
+以下のいずれかが必要：
+
+- **ステレオミキサー**: サウンド設定 → 録音デバイス → ステレオミキサーを有効化
+- **VB-Audio Virtual Cable**: https://vb-audio.com/Cable/
+
+## ビルド手順
+
+### Linux用（Linux上で実行）
+
+```bash
+cd backend && ./build.sh
+cd ../frontend && npm ci && npm run build:linux
+```
+
+**成果物**: `frontend/dist/*.AppImage`, `frontend/dist/*.deb`
+
+### macOS用（macOS上で実行）
+
+```bash
+cd backend && ./build-macos.sh
+cd ../frontend && npm ci && npm run build:mac
+```
+
+**成果物**: `frontend/dist/*.dmg`, `frontend/dist/*.zip`
+
+### Windows用（Windows上で実行）
+
+```bash
+cd backend && ./build-windows.sh
+cd ../frontend && npm ci && npm run build:win
+```
+
+**成果物**: `frontend/dist/*.exe`
+
+## CI/CD 自動ビルド
+
+GitHub Actions でタグプッシュ時に自動ビルド＆リリース作成されます：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+手動トリガーも可能（Actions → Build & Release → Run workflow）。
 
 ## 初回起動時の設定
 
-アプリを初めて起動すると、設定ファイルが自動的に作成されます：
+アプリ起動後、設定画面の「APIキー」タブからAPIキーを設定してください。
+すべての設定はアプリ内のデータベースに保存されます。`.env`ファイルは不要です。
 
-**設定ディレクトリ**: `~/.config/Meeting Assistant/config/`
+### 最小構成
 
-### 必須設定
+- **OpenAI API Key**: 文字起こし (Whisper API) とリサーチ機能に必要
 
-1. **OpenAI API キー**
-   
-   `.env` ファイルを編集：
-   ```
-   OPENAI_API_KEY=your-api-key-here
-   ```
+### オプション
 
-2. **Google Calendar（オプション）**
-   
-   ```
-   GOOGLE_SERVICE_ACCOUNT_FILE=/path/to/service-account-key.json
-   ```
-   
-   JSONキーファイルも同じディレクトリに配置してください。
-
-## トラブルシューティング
-
-### Pythonバックエンドのビルドエラー
-
-PyInstallerが依存関係を検出できない場合：
-
-```bash
-pip install pyinstaller
-pyinstaller --onefile --add-data "meeting_assistant.db:." server.py
-```
-
-### Electronビルドエラー
-
-node_modulesを再インストール：
-
-```bash
-cd frontend
-rm -rf node_modules package-lock.json
-npm install
-npm run build
-```
+- **Google Service Account**: Google Calendar連携
+- **Brave/Tavily/Perplexity API Keys**: ハイブリッドリサーチ機能
+- **Azure Speech Key**: Azure音声認識エンジン
+- **Anthropic/Google AI API Keys**: LLM精度向上プロバイダ
 
 ## 開発モードとの違い
 
 | 項目 | 開発モード | ビルド版 |
 |------|-----------|---------|
-| Pythonバックエンド | `python3 server.py` | バイナリ実行 |
-| 設定ファイル | `backend/.env` | `~/.config/Meeting Assistant/config/.env` |
+| バックエンド | `python3 server.py` | バイナリ実行 |
+| 設定 | DB (アプリ内UI) | DB (アプリ内UI) |
 | データベース | `backend/meeting_assistant.db` | 組み込み（初回コピー） |
 
-## CI/CDでの自動ビルド（推奨）
+## トラブルシューティング
 
-全プラットフォーム向けのビルドを自動化するには、GitHub Actionsなどを使用します。
+### PyInstallerビルドエラー
 
-**例: GitHub Actions（`.github/workflows/build.yml`）**
-
-```yaml
-name: Build
-
-on: [push, pull_request]
-
-jobs:
-  build-linux:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Build Linux
-        run: |
-          cd backend && ./build.sh
-          cd ../frontend && npm install && npm run build:linux
-
-  build-mac:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Build macOS
-        run: |
-          cd backend && ./build-macos.sh
-          cd ../frontend && npm install && npm run build:mac
-
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Build Windows
-        run: |
-          cd backend && ./build-windows.sh
-          cd ../frontend && npm install && npm run build:win
-```
-
-## セキュリティ注意事項
-
-**重要**: `.env` ファイルや認証情報はバイナリに含めないでください。
-初回起動時にユーザーが設定する仕組みになっています。
-
-もしビルド時に含める必要がある場合は、以下を実行：
+依存関係が検出できない場合は `--hidden-import` を追加：
 
 ```bash
-# 自己責任で
-cp backend/.env frontend/build/.env
+pyinstaller --onefile --hidden-import <module> server.py
 ```
 
-ただし、**API キーや認証情報が平文で配布される**ため、推奨しません。
+### Electronビルドエラー
+
+```bash
+cd frontend && rm -rf node_modules package-lock.json && npm install && npm run build
+```

@@ -46,38 +46,14 @@ let detectionInterval = null;
 let lastDetectedApp = null;
 let tray = null;
 
-// 初回起動時の設定セットアップ
+// 初回起動時のセットアップ（設定はすべてアプリ内UIから管理）
 function setupConfigDirectory() {
-  if (!app.isPackaged) return; // 開発モードではスキップ
-  
+  if (!app.isPackaged) return;
+
   const configDir = path.join(app.getPath('userData'), 'config');
-  
-  // 設定ディレクトリが存在しない場合は作成
   if (!fs.existsSync(configDir)) {
     fs.mkdirSync(configDir, { recursive: true });
     console.log('[Setup] Created config directory:', configDir);
-    
-    // .env.example をコピー
-    const examplePath = path.join(process.resourcesPath, 'backend', '.env.example');
-    const envPath = path.join(configDir, '.env');
-    
-    if (fs.existsSync(examplePath)) {
-      fs.copyFileSync(examplePath, envPath);
-      console.log('[Setup] Created .env file from example');
-      
-      // 初回起動の通知
-      dialog.showMessageBox({
-        type: 'info',
-        title: 'Meeting Assistant - 初回セットアップ',
-        message: '設定ファイルを作成しました',
-        detail: `設定ファイル: ${envPath}\n\nOpenAI API キーやGoogle Calendar設定を追加してください。`,
-        buttons: ['OK', '設定フォルダを開く']
-      }).then(result => {
-        if (result.response === 1) {
-          require('electron').shell.openPath(configDir);
-        }
-      });
-    }
   }
 }
 
@@ -220,10 +196,6 @@ function startPythonBackend() {
   pythonProcess = spawn(pythonExecutable, pythonArgs, {
     env: {
       ...process.env,
-      // 本番モードでは設定ファイルをユーザーディレクトリから読み込む
-      MEETING_ASSISTANT_CONFIG_DIR: app.isPackaged 
-        ? path.join(app.getPath('userData'), 'config')
-        : path.join(__dirname, '../../backend')
     }
   });
 

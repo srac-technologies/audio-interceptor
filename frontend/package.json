@@ -41,10 +41,6 @@
       {
         "from": "../backend/dist/server",
         "to": "backend/server"
-      },
-      {
-        "from": "../backend/.env.example",
-        "to": "backend/.env.example"
       }
     ],
     "linux": {
