@@ -5,12 +5,33 @@ Transcription Engines - 文字起こしエンジンの抽象化レイヤー
 各エンジンはTranscriptionEngineを継承し、transcribe()を実装する。
 """
 import os
+import re
 import logging
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# CJK文字間の不要なスペースを除去する正規表現
+# 日本語文字（ひらがな・カタカナ・漢字・CJK記号）同士の間のスペースを除去
+_CJK_RANGE = (
+    r'[\u3000-\u303F\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF'
+    r'\uF900-\uFAFF\uFF00-\uFFEF]'
+)
+_CJK_SPACE_RE = re.compile(
+    f'({_CJK_RANGE})\\s+({_CJK_RANGE})'
+)
+
+
+def strip_cjk_spaces(text: str) -> str:
+    """CJK文字間の不要なスペースを除去する"""
+    # 連続するCJK文字間のスペースを繰り返し除去（3文字以上の連続に対応）
+    prev = None
+    while prev != text:
+        prev = text
+        text = _CJK_SPACE_RE.sub(r'\1\2', text)
+    return text
 
 
 class TranscriptionEngine(ABC):
