@@ -48,6 +48,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements.txt
 
       - name: Build backend (Linux/macOS)
@@ -128,6 +129,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+
+      - name: Remove files over 2GB
+        run: find artifacts -type f -size +2G -delete
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
