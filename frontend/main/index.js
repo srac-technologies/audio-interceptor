@@ -175,7 +175,8 @@ function startPythonBackend() {
   if (app.isPackaged) {
     // 本番モード: パッケージされたバックエンドを使用
     const resourcesPath = process.resourcesPath;
-    pythonExecutable = path.join(resourcesPath, 'backend', 'server');
+    const serverName = process.platform === 'win32' ? 'server.exe' : 'server';
+    pythonExecutable = path.join(resourcesPath, 'backend', serverName);
     console.log('[Backend] Using packaged backend:', pythonExecutable);
   } else {
     // 開発モード: venv内のPythonを優先して使用

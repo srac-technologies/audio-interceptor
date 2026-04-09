@@ -22,6 +22,10 @@
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/srac-technologies/audio-interceptor.git"
+  },
   "devDependencies": {
     "electron": "^40.1.0",
     "electron-builder": "^26.7.0"
@@ -37,30 +41,42 @@
       "renderer/**/*",
       "package.json"
     ],
-    "extraResources": [
-      {
-        "from": "../backend/dist/server",
-        "to": "backend/server"
-      }
-    ],
     "linux": {
       "target": [
         "AppImage",
         "deb"
       ],
-      "category": "Office"
+      "category": "Office",
+      "extraResources": [
+        {
+          "from": "../backend/dist/server",
+          "to": "backend/server"
+        }
+      ]
     },
     "mac": {
       "target": [
         "dmg",
         "zip"
       ],
-      "category": "public.app-category.productivity"
+      "category": "public.app-category.productivity",
+      "extraResources": [
+        {
+          "from": "../backend/dist/server",
+          "to": "backend/server"
+        }
+      ]
     },
     "win": {
       "target": [
         "nsis",
         "portable"
+      ],
+      "extraResources": [
+        {
+          "from": "../backend/dist/server.exe",
+          "to": "backend/server.exe"
+        }
       ]
     },
     "directories": {
