@@ -20,7 +20,10 @@
     "transcription",
     "AI"
   ],
-  "author": "",
+  "author": {
+    "name": "SRAC Technologies",
+    "email": "dev@srac-technologies.com"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
