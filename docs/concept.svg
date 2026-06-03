@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 420" font-family="sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#333"/>
+    </marker>
+    <marker id="arrAccent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#00aa77"/>
+    </marker>
+  </defs>
+
+  <style>
+    .box { fill: #fff; stroke: #333; stroke-width: 1.5; rx: 8; }
+    .tap { fill: #e8fff5; stroke: #00aa77; stroke-width: 2; }
+    .label { font-size: 14px; fill: #222; }
+    .small { font-size: 11px; fill: #666; }
+    .title { font-size: 13px; font-weight: bold; fill: #00aa77; }
+    .flow { stroke: #333; stroke-width: 1.5; fill: none; }
+    .tapflow { stroke: #00aa77; stroke-width: 2; fill: none; stroke-dasharray: 5 3; }
+  </style>
+
+  <!-- アプリ音声 -->
+  <rect class="box" x="30" y="60" width="130" height="60"/>
+  <text class="label" x="95" y="85" text-anchor="middle">アプリ音声</text>
+  <text class="small" x="95" y="103" text-anchor="middle">Zoom / Meet / ブラウザ</text>
+
+  <!-- 仮想スピーカー (tap) -->
+  <rect class="box tap" x="230" y="50" width="170" height="80"/>
+  <text class="title" x="315" y="75" text-anchor="middle">仮想スピーカー</text>
+  <text class="small" x="315" y="95" text-anchor="middle">null-sink を経由させ</text>
+  <text class="small" x="315" y="110" text-anchor="middle">音を横取り (tap)</text>
+
+  <!-- 実スピーカー -->
+  <rect class="box" x="470" y="30" width="120" height="50"/>
+  <text class="label" x="530" y="60" text-anchor="middle">🔊 実スピーカー</text>
+
+  <!-- マイク -->
+  <rect class="box" x="30" y="200" width="130" height="50"/>
+  <text class="label" x="95" y="230" text-anchor="middle">🎤 マイク</text>
+
+  <!-- 文字起こし -->
+  <rect class="box" x="470" y="180" width="180" height="80"/>
+  <text class="title" x="560" y="205" text-anchor="middle">リアルタイム文字起こし</text>
+  <text class="small" x="560" y="225" text-anchor="middle">Whisper (local / API)</text>
+  <text class="small" x="560" y="242" text-anchor="middle">10秒チャンクで逐次</text>
+
+  <!-- プラグインハブ -->
+  <rect class="box tap" x="470" y="320" width="180" height="70"/>
+  <text class="title" x="560" y="345" text-anchor="middle">プラグインハブ</text>
+  <text class="small" x="560" y="363" text-anchor="middle">イベントをファンアウト</text>
+  <text class="small" x="560" y="378" text-anchor="middle">WS / pipe / webhook / exec</text>
+
+  <!-- 外部の受け手 -->
+  <rect class="box" x="730" y="180" width="140" height="50"/>
+  <text class="label" x="800" y="210" text-anchor="middle">UI 表示</text>
+
+  <rect class="box" x="730" y="260" width="140" height="40"/>
+  <text class="small" x="800" y="285" text-anchor="middle">外部ツール / Slack</text>
+
+  <rect class="box" x="730" y="320" width="140" height="40"/>
+  <text class="small" x="800" y="345" text-anchor="middle">自作スクリプト</text>
+
+  <rect class="box" x="730" y="380" width="140" height="30"/>
+  <text class="small" x="800" y="400" text-anchor="middle">任意の Webhook</text>
+
+  <!-- 矢印: アプリ → 仮想SP -->
+  <path class="flow" d="M 160 90 L 225 90" marker-end="url(#arr)"/>
+
+  <!-- 仮想SP → 実スピーカー (透過) -->
+  <path class="flow" d="M 400 75 Q 435 55 465 55" marker-end="url(#arr)"/>
+  <text class="small" x="432" y="42" text-anchor="middle">loopback (耳に届く)</text>
+
+  <!-- 仮想SP → 文字起こし (tap) -->
+  <path class="tapflow" d="M 315 130 L 315 220 L 465 220" marker-end="url(#arrAccent)"/>
+  <text class="small" x="330" y="180" fill="#00aa77">.monitor でタップ</text>
+
+  <!-- マイク → 文字起こし -->
+  <path class="flow" d="M 160 225 L 465 225" marker-end="url(#arr)"/>
+
+  <!-- 文字起こし → プラグインハブ -->
+  <path class="flow" d="M 560 260 L 560 318" marker-end="url(#arr)"/>
+
+  <!-- 文字起こし → UI -->
+  <path class="flow" d="M 650 210 L 728 205" marker-end="url(#arr)"/>
+
+  <!-- ハブ → 外部 -->
+  <path class="flow" d="M 650 340 Q 690 330 728 282" marker-end="url(#arr)"/>
+  <path class="flow" d="M 650 355 L 728 340" marker-end="url(#arr)"/>
+  <path class="flow" d="M 650 370 Q 690 385 728 395" marker-end="url(#arr)"/>
+
+  <!-- タイトル -->
+  <text x="450" y="25" text-anchor="middle" font-size="16" font-weight="bold" fill="#222">
+    Audio Interceptor のコンセプト
+  </text>
+</svg>

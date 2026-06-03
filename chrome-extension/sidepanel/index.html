@@ -77,7 +77,8 @@
       white-space: nowrap;
     }
 
-    #meeting-title {
+    #meeting-title,
+    #meeting-type {
       flex: 1;
       background: transparent;
       border: 1px solid rgba(255, 255, 255, 0.1);
@@ -88,9 +89,32 @@
       font-size: 0.85rem;
     }
 
-    #meeting-title:focus {
+    #meeting-type {
+      background: #0a0f14;
+    }
+
+    #meeting-title:focus,
+    #meeting-type:focus {
       outline: none;
       border-color: #00ffaa;
+    }
+
+    .transcribe-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: rgba(20, 25, 30, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 6px;
+      flex-shrink: 0;
+      font-size: 0.8rem;
+      color: #ccc;
+      cursor: pointer;
+    }
+
+    .transcribe-toggle input {
+      accent-color: #00ffaa;
     }
 
     /* コントロール */
@@ -314,6 +338,18 @@
       <label>会議:</label>
       <input type="text" id="meeting-title" placeholder="会議タイトルを入力..." />
     </div>
+
+    <div class="meeting-title-bar">
+      <label>種別:</label>
+      <select id="meeting-type">
+        <option value="">選択してください</option>
+      </select>
+    </div>
+
+    <label class="transcribe-toggle">
+      <input type="checkbox" id="transcribe-enabled" checked />
+      <span>文字起こしを有効にする</span>
+    </label>
 
     <div class="controls">
       <button class="btn btn-start" id="btn-start">● 録音開始</button>

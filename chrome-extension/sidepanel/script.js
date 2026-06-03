@@ -19,6 +19,8 @@ const btnStart = $('#btn-start');
 const btnStop = $('#btn-stop');
 const btnMute = $('#btn-mute');
 const meetingTitle = $('#meeting-title');
+const meetingTypeSelect = $('#meeting-type');
+const transcribeCheckbox = $('#transcribe-enabled');
 const panelTranscript = $('#panel-transcript');
 const panelResearch = $('#panel-research');
 const transcriptBadge = $('#transcript-count');
@@ -156,10 +158,36 @@ function clearEmptyState(panel) {
 // --- 録音コントロール ---
 async function startRecording() {
   try {
-    const res = await fetch(`${API_BASE}/recording/start`, { method: 'POST' });
+    const res = await fetch(`${API_BASE}/recording/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        transcribe_enabled: transcribeCheckbox.checked,
+        meeting_type_id: meetingTypeSelect.value ? parseInt(meetingTypeSelect.value) : null,
+        title: meetingTitle.value || '無題の会議',
+        tmp_dir: './tmp'
+      })
+    });
     if (!res.ok) throw new Error(await res.text());
   } catch (e) {
     statusText.textContent = `エラー: ${e.message}`;
+  }
+}
+
+async function loadMeetingTypes() {
+  try {
+    const res = await fetch(`${API_BASE}/meeting-types`);
+    if (!res.ok) return;
+    const data = await res.json();
+    meetingTypeSelect.innerHTML = '<option value="">選択してください</option>';
+    (data.meeting_types || []).forEach((type) => {
+      const option = document.createElement('option');
+      option.value = type.id;
+      option.textContent = type.name;
+      meetingTypeSelect.appendChild(option);
+    });
+  } catch (e) {
+    // バックエンド未起動でも UI は壊さない
   }
 }
 
@@ -208,6 +236,8 @@ function updateRecordingUI() {
   btnStart.disabled = recording;
   btnStop.disabled = !recording;
   btnMute.disabled = !recording;
+  transcribeCheckbox.disabled = recording;
+  meetingTypeSelect.disabled = recording;
   recordingIndicator.classList.toggle('active', recording);
 
   if (!recording) {
@@ -253,6 +283,7 @@ function init() {
   btnMute.addEventListener('click', toggleMute);
   meetingTitle.addEventListener('input', onTitleChange);
 
+  loadMeetingTypes();
   connect();
 }
 

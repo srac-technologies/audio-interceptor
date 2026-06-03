@@ -17,11 +17,19 @@
       color: #e0e0e0;
       padding: 0;
       overflow: hidden;
-      -webkit-app-region: drag; /* ツールバー無しでもドラッグ可能 */
     }
 
-    button, input, select, textarea, details {
-      -webkit-app-region: no-drag; /* これらの要素はドラッグ不可 */
+    /* ドラッグ可能領域はヘッダー帯のみに限定（body 全体に drag を当てると
+       div/label/summary など button 以外のクリック要素が吸われてしまうため） */
+    .header {
+      -webkit-app-region: drag;
+    }
+    .header h1,
+    .header-buttons,
+    .header button,
+    .header input,
+    .header select {
+      -webkit-app-region: no-drag;
     }
 
     .container {
@@ -887,6 +895,7 @@
                   <option value="openai-whisper">OpenAI Whisper API</option>
                   <option value="google-speech">Google Cloud Speech-to-Text</option>
                   <option value="kotoba-whisper">Kotoba-Whisper (日本語特化)</option>
+                  <option value="moonshine-tiny-ja">Moonshine Tiny JA (日本語特化・超軽量27M)</option>
                   <option value="azure-speech">Azure Speech Services</option>
               </select>
               <div id="engineAvailability" style="font-size: 0.8rem; margin-top: 4px;"></div>
@@ -895,7 +904,7 @@
           <div class="form-group">
               <label>モデル</label>
               <input type="text" id="settingTranscriptionModel" placeholder="small (faster-whisper) / whisper-1 (OpenAI)">
-              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ faster-whisper: tiny, base, small, medium, large-v3</div>
+              <div style="font-size: 0.8rem; color: #888; margin-top: 4px;">※ faster-whisper: tiny, base, small, medium, large-v3 / moonshine-tiny-ja は UsefulSensors/moonshine-tiny-ja 固定</div>
           </div>
 
           <div class="form-group">

@@ -10,6 +10,8 @@ import os
 import json
 import logging
 import logging.handlers
+import wave
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
@@ -543,6 +545,150 @@ async def websocket_endpoint(websocket: WebSocket):
     finally:
         state.websocket_clients.discard(websocket)
         logger.info("WebSocket client disconnected. Total: %d", len(state.websocket_clients))
+
+# --- 外部音声ストリーム受信 (Ingest) ---
+
+@app.websocket("/ws/ingest/audio")
+async def ingest_audio_endpoint(websocket: WebSocket):
+    """外部プロセス（meeting-bot 等）から PCM 音声を受け取り、文字起こしして /ws にブロードキャストする。
+
+    プロトコル:
+      1. クライアントは接続後、最初に JSON テキストフレームでメタデータを送る
+         {"sample_rate": 16000, "channels": 1, "sample_width": 2, "label": "bot"}
+      2. 以降はバイナリフレームで raw PCM (signed little-endian) を送り続ける
+      3. テキストフレーム "ping" には "pong" を返す
+    """
+    await websocket.accept()
+    logger.info("Audio ingest WebSocket connected")
+
+    sample_rate = 16000
+    channels = 1
+    sample_width = 2
+    label = "bot"
+
+    try:
+        meta_raw = await asyncio.wait_for(websocket.receive_text(), timeout=5.0)
+        meta = json.loads(meta_raw)
+        sample_rate = int(meta.get("sample_rate", sample_rate))
+        channels = int(meta.get("channels", channels))
+        sample_width = int(meta.get("sample_width", sample_width))
+        label = str(meta.get("label", label))
+        logger.info(
+            "Ingest metadata: rate=%d ch=%d width=%d label=%s",
+            sample_rate, channels, sample_width, label
+        )
+    except (asyncio.TimeoutError, json.JSONDecodeError, ValueError) as e:
+        logger.warning("Ingest metadata missing or invalid (%s); using defaults", e)
+
+    chunk_seconds = 10
+    chunk_bytes = sample_rate * channels * sample_width * chunk_seconds
+
+    tmp_dir = Path(os.getenv("INGEST_TMP_DIR", "./tmp/ingest"))
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        from transcription import get_transcription_service
+        transcription_service = get_transcription_service()
+    except Exception as e:
+        logger.error("Ingest: transcription service unavailable: %s", e)
+        await websocket.close(code=1011)
+        return
+
+    buffer = bytearray()
+    chunk_index = 0
+    pending_tasks: set = set()
+
+    def is_silent_pcm(pcm: bytes, threshold: int = 500) -> bool:
+        if not pcm:
+            return True
+        import array
+        samples = array.array('h')
+        samples.frombytes(pcm)
+        if not samples:
+            return True
+        sum_sq = sum(s * s for s in samples)
+        rms = (sum_sq / len(samples)) ** 0.5
+        return rms < threshold
+
+    async def process_chunk(pcm: bytes, idx: int):
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = tmp_dir / f"ingest_{label}_{ts}_{idx}.wav"
+        try:
+            with wave.open(str(filename), 'wb') as wf:
+                wf.setnchannels(channels)
+                wf.setsampwidth(sample_width)
+                wf.setframerate(sample_rate)
+                wf.writeframes(pcm)
+        except Exception as e:
+            logger.error("Ingest: failed to write WAV %s: %s", filename, e)
+            return
+
+        if is_silent_pcm(pcm):
+            logger.debug("Ingest: skipping silent chunk %d", idx)
+            return
+
+        try:
+            result = await transcription_service.transcribe(str(filename))
+            text = (result or {}).get("text", "").strip()
+        except Exception as e:
+            logger.error("Ingest transcription error: %s", e, exc_info=True)
+            return
+
+        if not text:
+            return
+
+        hallucination_phrases = [
+            'ご視聴ありがとうございました',
+            'ご視聴ありがとうございます',
+            'チャンネル登録',
+            '高評価',
+            'ご清聴ありがとうございました',
+            'Thanks for watching',
+            'Subscribe',
+            'Like and subscribe',
+        ]
+        if len(text) < 50 and any(p in text for p in hallucination_phrases):
+            logger.debug("Ingest: filtered hallucination: %s", text)
+            return
+
+        logger.info("[INGEST:%s] %s", label.upper(), text)
+        try:
+            on_transcript_callback(label, text)
+        except Exception as e:
+            logger.error("Ingest callback error: %s", e, exc_info=True)
+
+    try:
+        while True:
+            msg = await websocket.receive()
+            msg_type = msg.get("type")
+            if msg_type == "websocket.disconnect":
+                break
+
+            data = msg.get("bytes")
+            if data is None:
+                text_data = msg.get("text") or ""
+                if text_data == "ping":
+                    await websocket.send_text("pong")
+                continue
+
+            buffer.extend(data)
+            while len(buffer) >= chunk_bytes:
+                pcm_chunk = bytes(buffer[:chunk_bytes])
+                del buffer[:chunk_bytes]
+                task = asyncio.create_task(process_chunk(pcm_chunk, chunk_index))
+                pending_tasks.add(task)
+                task.add_done_callback(pending_tasks.discard)
+                chunk_index += 1
+    except Exception as e:
+        logger.debug("Ingest WS error: %s", e)
+    finally:
+        if pending_tasks:
+            logger.info("Ingest: waiting for %d in-flight transcription tasks", len(pending_tasks))
+            await asyncio.gather(*pending_tasks, return_exceptions=True)
+        logger.info(
+            "Audio ingest WebSocket disconnected (label=%s, discarded %d trailing bytes)",
+            label, len(buffer)
+        )
 
 # --- Plugin WebSocket & API ---
 
