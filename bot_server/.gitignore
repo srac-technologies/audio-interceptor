@@ -1,0 +1,6 @@
+# Phase 0 spike artifacts — runs are reproducible, output is not.
+spike/shots_*/
+spike/spike_audio_*.wav
+
+# Persistent profile dir if it lands inside the spike tree
+spike/profile_*/
