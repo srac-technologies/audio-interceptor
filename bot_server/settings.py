@@ -37,6 +37,11 @@ class Settings:
     whisper_language: str
     chunk_seconds: float
 
+    # Phase 2.5: viewer (graphic-recording web view) — optional.
+    viewer_enabled: bool
+    viewer_token: str
+    viewer_idle_evict_seconds: float
+
 
 def _env_bool(name: str, default: bool) -> bool:
     raw = os.environ.get(name)
@@ -89,4 +94,9 @@ def load_settings() -> Settings:
         whisper_model=os.environ.get("WHISPER_MODEL", "small"),
         whisper_language=os.environ.get("WHISPER_LANGUAGE", "ja"),
         chunk_seconds=float(os.environ.get("CHUNK_SECONDS", "10")),
+        viewer_enabled=_env_bool("VIEWER_ENABLED", False),
+        viewer_token=os.environ.get("VIEWER_TOKEN", "").strip(),
+        viewer_idle_evict_seconds=float(
+            os.environ.get("VIEWER_IDLE_EVICT_SECONDS", "120")
+        ),
     )

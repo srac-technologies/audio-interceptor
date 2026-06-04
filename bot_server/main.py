@@ -48,21 +48,52 @@ async def lifespan(app: FastAPI):
     app.state.settings = settings
     app.state.broker = broker
     app.state.manager = manager
+
+    viewer_manager = None
+    if settings.viewer_enabled:
+        # Defer the import so a `viewer_enabled=False` deploy doesn't need
+        # httpx or any of the viewer-only dependencies installed.
+        from .viewer.llm import load_llm_config
+        from .viewer.manager import ViewerManager
+        from .viewer.router import router as viewer_router
+
+        try:
+            llm_config = load_llm_config()
+        except ValueError as exc:
+            logger.error("viewer disabled: %s", exc)
+        else:
+            viewer_manager = ViewerManager(
+                broker=broker,
+                llm_config=llm_config,
+                idle_evict_seconds=settings.viewer_idle_evict_seconds,
+            )
+            await viewer_manager.start()
+            app.state.viewer_manager = viewer_manager
+            app.include_router(viewer_router)
+            logger.info(
+                "viewer enabled at /v/{slug} (llm=%s/%s)",
+                llm_config.backend,
+                llm_config.model,
+            )
+
     logger.info(
-        "bot_server ready host=%s port=%d dummy=%s cap=%d",
+        "bot_server ready host=%s port=%d dummy=%s cap=%d viewer=%s",
         settings.host,
         settings.port,
         settings.dummy_publisher_enabled,
         settings.max_concurrent_meetings,
+        bool(viewer_manager),
     )
     try:
         yield
     finally:
         await manager.leave_all()
+        if viewer_manager is not None:
+            await viewer_manager.stop()
         logger.info("bot_server shutdown")
 
 
-app = FastAPI(lifespan=lifespan, title="Meet bot server", version="0.1.0")
+app = FastAPI(lifespan=lifespan, title="Meet bot server", version="0.2.0")
 
 
 class JoinRequest(BaseModel):

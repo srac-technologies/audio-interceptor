@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 from collections import defaultdict
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import WebSocket
@@ -22,9 +23,18 @@ from fastapi import WebSocket
 logger = logging.getLogger("bot_server.broker")
 
 
+InternalSubscriber = Callable[[dict[str, Any]], Awaitable[None]]
+"""In-process async callback that gets every published message for a topic.
+
+Used by :class:`bot_server.viewer.pipeline.ViewerPipeline` so the viewer can
+react to transcripts without round-tripping through a websocket.
+"""
+
+
 class Broker:
     def __init__(self) -> None:
         self._subs: dict[str, set[WebSocket]] = defaultdict(set)
+        self._internal: dict[str, set[InternalSubscriber]] = defaultdict(set)
         self._lock = asyncio.Lock()
 
     async def subscribe(self, topic: str, ws: WebSocket) -> None:
@@ -50,17 +60,20 @@ class Broker:
     async def publish(self, topic: str, message: dict[str, Any]) -> int:
         """Send `message` (JSON-encoded) to every subscriber of `topic`.
 
-        Returns the number of subscribers the message was successfully
-        delivered to. Subscribers that raise on send are evicted.
+        Both external WebSocket subscribers and in-process internal callbacks
+        are notified. Returns the number of WebSocket subscribers the message
+        was successfully delivered to. Dead WSs are evicted; internal callback
+        exceptions are logged but don't propagate.
         """
         text = json.dumps(message, ensure_ascii=False)
         async with self._lock:
-            subs = list(self._subs.get(topic, set()))
-        if not subs:
-            return 0
+            ws_subs = list(self._subs.get(topic, set()))
+            internal_subs = list(self._internal.get(topic, set()))
+
+        # External WS subscribers (the public surface).
         dead: list[WebSocket] = []
         delivered = 0
-        for ws in subs:
+        for ws in ws_subs:
             try:
                 await ws.send_text(text)
                 delivered += 1
@@ -75,10 +88,42 @@ class Broker:
                         bucket.discard(ws)
                     if not bucket:
                         del self._subs[topic]
+
+        # Internal in-process subscribers (e.g. viewer pipeline). These don't
+        # block the public WS path; we run them sequentially since they're
+        # expected to be cheap (enqueue into a per-pipeline asyncio.Queue).
+        for cb in internal_subs:
+            try:
+                await cb(message)
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "publish: internal subscriber for topic=%s raised", topic
+                )
+
         return delivered
+
+    async def subscribe_internal(self, topic: str, callback: InternalSubscriber) -> None:
+        async with self._lock:
+            self._internal[topic].add(callback)
+            count = len(self._internal[topic])
+        logger.info("subscribe_internal topic=%s subs=%d", topic, count)
+
+    async def unsubscribe_internal(
+        self, topic: str, callback: InternalSubscriber
+    ) -> None:
+        async with self._lock:
+            bucket = self._internal.get(topic)
+            if bucket is None:
+                return
+            bucket.discard(callback)
+            if not bucket:
+                del self._internal[topic]
 
     def subscriber_count(self, topic: str) -> int:
         return len(self._subs.get(topic, set()))
+
+    def internal_subscriber_count(self, topic: str) -> int:
+        return len(self._internal.get(topic, set()))
 
     def topics(self) -> list[str]:
         return list(self._subs.keys())

@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>bot_server viewer — __SLUG__</title>
+<style>
+  :root {
+    --bg: #1f1f1d;
+    --fg: #eee;
+    --muted: #999;
+    --chip: #333;
+    --tab: #2c2c2a;
+    --tab-active: #fafaf6;
+    --tab-fg-active: #1f1f1d;
+    --panel-bg: rgba(20, 20, 18, 0.86);
+    --panel-bg-light: rgba(255, 255, 255, 0.94);
+    --accent: #00ffaa;
+  }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: 'Hiragino Sans', 'Noto Sans CJK JP', sans-serif; }
+
+  header { padding: 6px 14px; background: #141413; font-size: 13px;
+    display: flex; gap: 10px; align-items: center; border-bottom: 1px solid #000; }
+  .chip { background: var(--chip); padding: 2px 8px; border-radius: 3px; font-size: 12px; }
+  .chip.ok { background: #1a4d2e; }
+  .chip.err { background: #5a1f1f; }
+  .chip.warn { background: #7a5a1a; }
+  #slug { font-family: ui-monospace, monospace; color: var(--accent); }
+  #meta { color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .switch { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  .switch input { accent-color: var(--accent); }
+
+  #tabs { display: flex; gap: 2px; background: #141413; padding: 0 8px; border-bottom: 1px solid #000; }
+  .tab { padding: 8px 16px; background: var(--tab); color: #ccc; cursor: pointer;
+    border-top-left-radius: 5px; border-top-right-radius: 5px; font-size: 13px;
+    user-select: none; transition: background 120ms; }
+  .tab:hover { background: #3c3c39; }
+  .tab.active { background: var(--tab-active); color: var(--tab-fg-active); font-weight: 600; }
+
+  #app { position: relative; height: calc(100% - 38px - 36px); overflow: hidden; }
+  #stage { position: absolute; inset: 0; overflow: auto; }
+  #stage svg { width: 100%; height: 100%; display: block; background: #fafaf6; }
+  #stage .mermaid { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #fafaf6; }
+  #stage .mermaid svg { width: auto; height: auto; max-width: 100%; max-height: 100%; }
+  #stage .empty { padding: 60px 20px; color: #888; text-align: center; background: #fafaf6; height: 100%; box-sizing: border-box; }
+
+  /* New-node fade-in */
+  .node-new { animation: pop 360ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+    transform-origin: center; transform-box: fill-box; }
+  @keyframes pop {
+    from { opacity: 0; transform: scale(0.55); }
+    60%  { opacity: 1; transform: scale(1.08); }
+    to   { opacity: 1; transform: scale(1.0); }
+  }
+
+  /* Transcript overlay: floats over the SVG */
+  #transcript-overlay {
+    position: absolute;
+    right: 12px; bottom: 12px;
+    width: min(380px, 40vw);
+    max-height: calc(100% - 24px);
+    background: var(--panel-bg);
+    border: 1px solid #333;
+    border-radius: 6px;
+    display: flex; flex-direction: column;
+    backdrop-filter: blur(8px);
+    color: #eee;
+    font-size: 13px;
+    transition: transform 220ms ease, opacity 220ms ease;
+    z-index: 10;
+  }
+  #transcript-overlay.collapsed {
+    transform: translateY(calc(100% - 34px));
+  }
+  #transcript-overlay header {
+    padding: 6px 12px;
+    background: rgba(0,0,0,0.35);
+    border-bottom: 1px solid #2a2a28;
+    display: flex; align-items: center; gap: 8px;
+    cursor: pointer;
+    user-select: none;
+  }
+  #transcript-overlay header strong { flex: 1; }
+  #transcript-overlay header .count { color: var(--muted); font-size: 11px; }
+  #transcript-list {
+    overflow-y: auto;
+    flex: 1;
+    padding: 8px 12px;
+    min-height: 60px;
+  }
+  #transcript-list .entry {
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    line-height: 1.5;
+    animation: fadein 220ms ease-out;
+  }
+  #transcript-list .entry:last-child { border-bottom: none; }
+  #transcript-list .speaker {
+    display: inline-block;
+    background: rgba(0,255,170,0.15);
+    color: var(--accent);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    margin-right: 6px;
+    vertical-align: 1px;
+  }
+  #transcript-list .ts {
+    font-family: ui-monospace, monospace;
+    color: var(--muted);
+    font-size: 11px;
+    margin-right: 6px;
+  }
+  @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  /* When the transcript mode is selected, the overlay hides and the
+     stage rendering takes over the whole area. */
+  body.transcript-mode #transcript-overlay { display: none; }
+  body.transcript-mode #stage { background: #fafaf6; }
+  body.transcript-mode #stage .transcript { padding: 18px 22px; color: #222; min-height: 100%; box-sizing: border-box; }
+  body.transcript-mode #stage .transcript .entry { margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #e6e3dc; }
+  body.transcript-mode #stage .transcript .head { display: flex; gap: 12px; font-size: 12px; color: #777; margin-bottom: 4px; }
+  body.transcript-mode #stage .transcript .ts { font-family: ui-monospace, monospace; }
+  body.transcript-mode #stage .transcript .meta { color: #999; }
+  body.transcript-mode #stage .transcript .text { font-size: 15px; line-height: 1.7; color: #1f1f1f; }
+  body.transcript-mode #stage .transcript .empty { padding: 60px 20px; color: #888; text-align: center; }
+</style>
+</head>
+<body data-slug="__SLUG__">
+<header>
+  <span><strong>bot_server</strong> viewer</span>
+  <span id="status" class="chip">接続中…</span>
+  <span id="slug">__SLUG__</span>
+  <label class="switch" title="グラレコ生成のON/OFF。OFFでもtranscriptは届きます。">
+    <input type="checkbox" id="enabled" checked>
+    <span>グラレコ</span>
+  </label>
+  <span id="meta"></span>
+</header>
+
+<div id="tabs">
+  <div class="tab" data-mode="mindmap">マインドマップ</div>
+  <div class="tab" data-mode="tree">ロジックツリー</div>
+  <div class="tab" data-mode="kanban">カンバン</div>
+  <div class="tab" data-mode="mermaid">Mermaid</div>
+  <div class="tab" data-mode="transcript">議事録</div>
+</div>
+
+<div id="app">
+  <div id="stage"></div>
+  <div id="transcript-overlay">
+    <header id="transcript-toggle">
+      <strong>議事録</strong>
+      <span class="count" id="transcript-count">0 件</span>
+      <span id="transcript-arrow">▾</span>
+    </header>
+    <div id="transcript-list"></div>
+  </div>
+</div>
+
+<script src="./static/viewer.js"></script>
+</body>
+</html>

@@ -159,6 +159,57 @@ bot_server.worker は **stdout に 1 行 1 JSON object** で次を出力:
 
 `stderr` はログ。BotManager が `worker[<topic_key>]: ...` プレフィックス付きで親ロガーに転送。
 
+## Viewer (optional, Phase 2.5)
+
+`VIEWER_ENABLED=1` で **グラレコ web view** が `/v/{meet-code}` に立ち上がる。Meet 文字起こしを LLM (Ollama 既定、`LLM_BACKEND=openai|anthropic` で cloud 切替) に流して、リアルタイムに mindmap / logic tree / kanban / mermaid / 議事録の 5 ビューを切替表示。議事録は SVG 上に重ねたパネルで常時見える。
+
+### 起動
+
+```bash
+# Ollama 既定 (qwen3.5:9b が必要; ollama serve しておく)
+BOT_TOKEN=devtoken VIEWER_ENABLED=1 ./bot_server/run_dev.sh
+
+# OpenAI で動かす場合
+BOT_TOKEN=devtoken VIEWER_ENABLED=1 LLM_BACKEND=openai OPENAI_API_KEY=sk-... \
+  ./bot_server/run_dev.sh
+```
+
+ブラウザで `http://127.0.0.1:8765/v/abc-defg-hij` を開くと、同じ meeting code (= topic_key) の transcript が流れてくる端から LLM 抽出 → SVG が成長していく。グラレコ ON/OFF はヘッダーのトグル、ビュー切替はタブ。
+
+### 環境変数 (viewer)
+
+| 名前 | デフォルト | 用途 |
+|---|---|---|
+| `VIEWER_ENABLED` | `0` | `1` で `/v/{slug}` ルートを mount |
+| `VIEWER_TOKEN` | (空) | 空なら capability-as-URL (slug 知ってる人は閲覧可)。設定すると `?token=` 必須 |
+| `VIEWER_IDLE_EVICT_SECONDS` | `120` | 購読者ゼロが N 秒続いたら pipeline 破棄 |
+| `LLM_BACKEND` | `ollama` | `ollama` / `openai` / `anthropic` |
+| `OLLAMA_URL` | `http://localhost:11434/api/chat` | Ollama HTTP API |
+| `OLLAMA_MODEL` | `qwen3.5:9b` | |
+| `OPENAI_API_KEY` / `OPENAI_MODEL` | — / `gpt-4o-mini` | `LLM_BACKEND=openai` 用 |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | OpenAI 互換 endpoint 用 |
+| `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | — / `claude-haiku-4-5-20251001` | `LLM_BACKEND=anthropic` 用 |
+| `LLM_TIMEOUT_SECONDS` | `180` | |
+| `LLM_TEMPERATURE` | `0.1` | |
+| `LLM_NUM_PREDICT` | `512` | OpenAI/Anthropic の max_tokens、Ollama の num_predict |
+
+### プロトコル (ブラウザ ↔ viewer ws)
+
+`WSS /v/{slug}/ws` で双方向。受信:
+- `{"type":"snapshot","view_mode":"mindmap","view_type":"svg","content":"<svg.../>", "node_count":..., "stats":{...}, "enabled":true, ...}`
+- `{"type":"transcript","speaker":..., "text":..., "ts":...}` (broker から fan-out された生 transcript)
+- `{"type":"viewer_error","detail":"..."}` (LLM 失敗時)
+- `{"type":"status", ...}` (bot 側ステータスをそのまま見せたい時用)
+
+送信 (制御):
+- `{"type":"set_view","mode":"mindmap|tree|kanban|mermaid|transcript"}`
+- `{"type":"set_enabled","enabled":true|false}`
+
+### debug
+
+- `GET /v/sessions` でアクティブな pipeline 一覧 (`refcount` / `enabled` / `view_mode` / `idle_seconds`)
+- LLM 失敗時はブラウザのステータスチップに `LLM ERR:` が出るので、サーバーログ + Ollama serve のログを確認
+
 ## 次 (Phase 3)
 
 Chrome 拡張 (Manifest V3) で Meet タブ上に overlay 表示。`meet.google.com/<code>` の URL から自動 topic 購読。
