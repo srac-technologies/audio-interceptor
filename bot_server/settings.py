@@ -7,6 +7,7 @@ trimmed for a small container image. Validation lives in :func:`load_settings`.
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass
 
 
@@ -18,9 +19,23 @@ class Settings:
     public_ws_base: str
     max_concurrent_meetings: int
     idle_eviction_seconds: float
+    log_level: str
+
+    # Phase 1 fallback: dummy publisher (no real Meet bot).
     dummy_publisher_enabled: bool
     dummy_publisher_interval_seconds: float
-    log_level: str
+
+    # Phase 2: real worker subprocess settings.
+    worker_python: str
+    worker_module: str
+    worker_profile_dir_template: str | None
+    worker_headless: bool
+    worker_shutdown_timeout_seconds: float
+    chrome_channel: str
+    admission_timeout_seconds: float
+    whisper_model: str
+    whisper_language: str
+    chunk_seconds: float
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -39,7 +54,6 @@ def load_settings() -> Settings:
         )
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "8765"))
-    # Publicly advertised WS base — useful when behind a reverse proxy / TLS.
     public_ws_base = os.environ.get("PUBLIC_WS_BASE", f"ws://{host}:{port}")
     return Settings(
         bot_token=bot_token,
@@ -48,10 +62,31 @@ def load_settings() -> Settings:
         public_ws_base=public_ws_base.rstrip("/"),
         max_concurrent_meetings=int(os.environ.get("MAX_CONCURRENT_MEETINGS", "3")),
         idle_eviction_seconds=float(os.environ.get("IDLE_EVICTION_SECONDS", "300")),
-        # Phase 1: dummy publisher is on by default so the smoke test
-        # (wscat) works without a real bot. Turn it off when Phase 2's
-        # real worker lands.
-        dummy_publisher_enabled=_env_bool("DUMMY_PUBLISHER", True),
-        dummy_publisher_interval_seconds=float(os.environ.get("DUMMY_INTERVAL", "5")),
         log_level=os.environ.get("LOG_LEVEL", "INFO"),
+        # DUMMY_PUBLISHER defaults OFF in Phase 2 — the real worker is the
+        # primary path. Set DUMMY_PUBLISHER=1 to keep the broker smoke-test
+        # path working without launching Playwright + Whisper.
+        dummy_publisher_enabled=_env_bool("DUMMY_PUBLISHER", False),
+        dummy_publisher_interval_seconds=float(os.environ.get("DUMMY_INTERVAL", "5")),
+        worker_python=os.environ.get("WORKER_PYTHON", sys.executable),
+        # Override for tests: WORKER_MODULE=bot_server._fake_worker swaps
+        # in the no-Playwright fake worker.
+        worker_module=os.environ.get("WORKER_MODULE", "bot_server.worker"),
+        # Optional template like '/var/lib/bot_server/profiles/{topic_key}'.
+        # When None, the worker creates an ephemeral tmpdir per session — fine
+        # for one-off testing but a fresh Chrome profile every time means the
+        # bot is logged out (and Meet may treat it as a guest, which often
+        # fails admission). Set this for production.
+        worker_profile_dir_template=os.environ.get("WORKER_PROFILE_DIR_TEMPLATE") or None,
+        worker_headless=_env_bool("WORKER_HEADLESS", False),
+        worker_shutdown_timeout_seconds=float(
+            os.environ.get("WORKER_SHUTDOWN_TIMEOUT", "30")
+        ),
+        chrome_channel=os.environ.get("CHROME_CHANNEL", "chrome"),
+        admission_timeout_seconds=float(
+            os.environ.get("ADMISSION_TIMEOUT", "180")
+        ),
+        whisper_model=os.environ.get("WHISPER_MODEL", "small"),
+        whisper_language=os.environ.get("WHISPER_LANGUAGE", "ja"),
+        chunk_seconds=float(os.environ.get("CHUNK_SECONDS", "10")),
     )

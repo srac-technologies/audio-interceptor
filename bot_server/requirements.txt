@@ -1,5 +1,17 @@
-# Phase 1 (skeleton + broker). Phase 2 will add playwright + faster-whisper.
+# Phase 2: bot_server FastAPI 層 + Meet bot worker.
+#
+# CPU-only torch / faster-whisper でも faster-whisper 自体が ctranslate2 を
+# 噛むので Whisper モデル初回 download は ~200MB。事前に WHISPER_MODEL=tiny
+# でテストする手もあり。
 fastapi>=0.110
 uvicorn[standard]>=0.27
 pydantic>=2.6
 websockets>=12
+
+# Meet bot subprocess
+playwright>=1.45
+
+# 文字起こし
+faster-whisper>=1.0
+numpy>=1.26
+scipy>=1.11  # 高品質な resample_poly。無くても fallback でリニア補間に落ちる
