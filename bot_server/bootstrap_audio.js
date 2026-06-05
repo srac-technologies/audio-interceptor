@@ -36,6 +36,30 @@
   };
   window.__meetAudioStats = () => JSON.parse(JSON.stringify(stats));
 
+  // DOM probe — call from Python to see what audio surfaces Meet exposes.
+  window.__meetAudioProbeDom = () => {
+    const audios = Array.from(document.querySelectorAll("audio"));
+    const videos = Array.from(document.querySelectorAll("video"));
+    return {
+      audio_count: audios.length,
+      video_count: videos.length,
+      audios: audios.slice(0, 8).map((el) => ({
+        has_src_object: !!el.srcObject,
+        track_count: el.srcObject && el.srcObject.getAudioTracks
+          ? el.srcObject.getAudioTracks().length : 0,
+        muted: el.muted,
+        paused: el.paused,
+        readyState: el.readyState,
+        autoplay: el.autoplay,
+      })),
+      videos_with_audio: videos.slice(0, 8).map((el) => ({
+        has_src_object: !!el.srcObject,
+        audio_track_count: el.srcObject && el.srcObject.getAudioTracks
+          ? el.srcObject.getAudioTracks().length : 0,
+      })),
+    };
+  };
+
   // Tunable from Python via `window.__meetAudioConfig`. Defaults here match
   // what worker.py asks for at startup; explicit overrides happen via a
   // page.evaluate call.
@@ -53,9 +77,12 @@
   let workletReadyPromise = null;
 
   // ----- AudioWorklet plumbing ------------------------------------------
-  // We register a tiny processor that just forwards the input channel to the
-  // main thread. Float32 → Int16 conversion happens in the main thread so we
-  // can keep the worklet processor under the 1 ms budget per quantum.
+  // We register a tiny processor that forwards the input channel to the main
+  // thread AND writes silence to its single mono output. The output is
+  // required: a Web Audio node with numberOfOutputs=0 may be GCed / not
+  // scheduled when nothing downstream pulls it. We route the silent output
+  // through a zero-gain sink to ``audioCtx.destination`` so the graph treats
+  // the worklet as a live producer.
   const WORKLET_SRC = `
     class PCMCaptureProcessor extends AudioWorkletProcessor {
       constructor(options) {
@@ -64,10 +91,14 @@
         this._buf = new Float32Array(this._chunk);
         this._idx = 0;
       }
-      process(inputs) {
+      process(inputs, outputs) {
         const input = inputs[0];
+        // Write silence to output[0] mono so the graph keeps us alive.
+        const output = outputs[0];
+        if (output && output[0]) {
+          output[0].fill(0);
+        }
         if (!input || input.length === 0) return true;
-        // Downmix to mono by averaging channels.
         const channels = input;
         const samples = channels[0].length;
         const out = new Float32Array(samples);
@@ -79,11 +110,9 @@
           const inv = 1 / channels.length;
           for (let i = 0; i < samples; i++) out[i] *= inv;
         }
-        // Accumulate into the chunk buffer; emit when full.
         for (let i = 0; i < samples; i++) {
           this._buf[this._idx++] = out[i];
           if (this._idx >= this._chunk) {
-            // Copy so we can keep filling without aliasing the transferred buffer.
             const copy = this._buf.slice(0);
             this.port.postMessage(copy.buffer, [copy.buffer]);
             this._idx = 0;
@@ -111,7 +140,8 @@
         workletNode = new AudioWorkletNode(audioCtx, "pcm-capture", {
           processorOptions: { chunkSamples: cfg.chunk_samples },
           numberOfInputs: 1,
-          numberOfOutputs: 0,
+          numberOfOutputs: 1,
+          outputChannelCount: [1],
         });
         workletNode.port.onmessage = (ev) => {
           // ev.data is an ArrayBuffer of Float32 PCM at audioCtx.sampleRate.
@@ -137,6 +167,13 @@
           }
         };
         mixer.connect(workletNode);
+        // Keep the worklet alive in the graph by giving it a downstream
+        // path: zero-gain sink → destination. Web Audio prunes producers
+        // that have nowhere to send their output.
+        const sink = audioCtx.createGain();
+        sink.gain.value = 0.0;
+        workletNode.connect(sink);
+        sink.connect(audioCtx.destination);
         stats.worklet_loaded = true;
         URL.revokeObjectURL(url);
       }).catch((e) => {
@@ -158,9 +195,29 @@
     return audioCtx;
   }
 
+  // Diagnostic table — exposed via window.__meetTrackInfo() so the Python
+  // poller can see exactly which tracks were captured and whether they're
+  // muted (no audio flowing).
+  const trackInfo = [];
+  window.__meetTrackInfo = () => trackInfo.map((t) => ({
+    id: t.track.id,
+    label: t.track.label,
+    muted: t.track.muted,
+    enabled: t.track.enabled,
+    readyState: t.track.readyState,
+    unmute_count: t.unmute_count,
+    mute_count: t.mute_count,
+  }));
+
   function pipeTrack(track) {
     if (!track || track.kind !== "audio") return;
     stats.audio_tracks_seen += 1;
+    const entry = { track, unmute_count: 0, mute_count: 0 };
+    trackInfo.push(entry);
+    try {
+      track.addEventListener("unmute", () => { entry.unmute_count += 1; });
+      track.addEventListener("mute", () => { entry.mute_count += 1; });
+    } catch (e) {}
     ensureAudioContext().then(async () => {
       if (workletReadyPromise) await workletReadyPromise;
       if (!audioCtx || !mixer) return;
@@ -202,6 +259,76 @@
     WrappedPC.__meetAudioWrapped = true;
     Object.setPrototypeOf(WrappedPC, OrigPC);
     window.RTCPeerConnection = WrappedPC;
+  }
+
+  // ----- Pre-nav RTC capture pickup -------------------------------------
+  // The pre-nav wrap installed via add_init_script (see meet_audio_source.py
+  // _PRE_NAV_RTC_WRAP_JS) collects inbound audio tracks into
+  // window.__meetCapturedTracks. We drain that array here and keep watching
+  // it for additions (Meet may add tracks later as participants join/unmute).
+  try {
+    const captured = window.__meetCapturedTracks;
+    if (Array.isArray(captured)) {
+      captured.forEach((t) => pipeTrack(t));
+      // Hot-patch push so future additions are immediately piped.
+      const origPush = captured.push.bind(captured);
+      captured.push = function () {
+        for (const t of arguments) {
+          try { pipeTrack(t); } catch (e) { stats.last_error = "pipe_push: " + String(e); }
+        }
+        return origPush.apply(captured, arguments);
+      };
+    }
+  } catch (e) {
+    stats.last_error = "captured_pickup: " + String(e);
+  }
+
+  // ----- HTMLMediaElement.srcObject setter patch ------------------------
+  // The most reliable hook for catching audio that already exists at
+  // post-admission injection time. Whenever Meet sets `el.srcObject = ...`
+  // on an <audio> or <video>, we observe the assigned MediaStream and pipe
+  // each audio track through our bridge.
+  try {
+    const proto = window.HTMLMediaElement && window.HTMLMediaElement.prototype;
+    const desc = proto && Object.getOwnPropertyDescriptor(proto, "srcObject");
+    if (desc && desc.set && !desc.set.__meetAudioWrapped) {
+      const origSet = desc.set;
+      const origGet = desc.get;
+      function wrappedSet(stream) {
+        origSet.call(this, stream);
+        try {
+          if (stream && typeof stream.getAudioTracks === "function") {
+            stream.getAudioTracks().forEach((t) => pipeTrack(t));
+            stream.addEventListener("addtrack", (e) => pipeTrack(e.track));
+          }
+        } catch (e) {
+          stats.last_error = "srcObject_set: " + String(e);
+        }
+      }
+      wrappedSet.__meetAudioWrapped = true;
+      Object.defineProperty(proto, "srcObject", {
+        set: wrappedSet,
+        get: origGet,
+        configurable: true,
+        enumerable: true,
+      });
+    }
+  } catch (e) {
+    stats.last_error = "srcObject_patch: " + String(e);
+  }
+
+  // Also catch any existing <audio>/<video> that already had srcObject set
+  // before our patch landed — walk them once now.
+  try {
+    Array.from(document.querySelectorAll("audio,video")).forEach((el) => {
+      const s = el.srcObject;
+      if (s && typeof s.getAudioTracks === "function") {
+        s.getAudioTracks().forEach((t) => pipeTrack(t));
+        s.addEventListener("addtrack", (e) => pipeTrack(e.track));
+      }
+    });
+  } catch (e) {
+    stats.last_error = "initial_scan: " + String(e);
   }
 
   // ----- <audio> MutationObserver fallback ------------------------------

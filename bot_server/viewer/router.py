@@ -31,6 +31,9 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, HTMLResponse
 
+from pydantic import BaseModel
+
+from ..bot_manager import BotManager, CapacityError
 from ..broker import Broker
 from .canvas.views import VIEW_MODES
 from .manager import ViewerManager
@@ -57,10 +60,74 @@ def _check_token(request_token: str | None, viewer_token: str) -> bool:
     return bool(request_token) and request_token == viewer_token
 
 
+@router.get("/bookmarklet", response_class=HTMLResponse)
+async def bookmarklet() -> HTMLResponse:
+    """Standalone helper page with a Meet → viewer bookmarklet."""
+    path = _STATIC_DIR / "bookmarklet.html"
+    if not path.is_file():
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    return HTMLResponse(content=path.read_text(encoding="utf-8"))
+
+
 @router.get("/sessions")
 async def sessions(request: Request) -> dict:
     mgr: ViewerManager = request.app.state.viewer_manager
     return {"sessions": mgr.list_slugs()}
+
+
+class JoinFromViewerResponse(BaseModel):
+    topic_key: str
+    bot_active: bool
+
+
+@router.get("/{slug}/status")
+async def viewer_status(slug: str, request: Request) -> dict:
+    """Whether a bot is currently joined to this slug's meeting.
+
+    Used by the viewer's UI to decide whether to render the "Join Meet"
+    button. No auth required (capability-as-URL).
+    """
+    if not _SLUG_RE.match(slug):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid slug")
+    manager: BotManager = request.app.state.manager
+    sessions_list = manager.list_sessions()
+    bot_active = any(s["topic_key"] == slug for s in sessions_list)
+    return {
+        "slug": slug,
+        "bot_active": bot_active,
+        "meet_url": f"https://meet.google.com/{slug}",
+    }
+
+
+@router.post("/{slug}/join", response_model=JoinFromViewerResponse)
+async def viewer_join(
+    slug: str,
+    request: Request,
+    token: str | None = Query(default=None),
+) -> JoinFromViewerResponse:
+    """Make the bot join the Meet meeting whose code matches ``slug``.
+
+    The viewer proxies on the browser's behalf so BOT_TOKEN never reaches
+    the client. ``VIEWER_TOKEN`` gates this if set.
+    """
+    settings = request.app.state.settings
+    if not _check_token(token, settings.viewer_token):
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, "invalid viewer token"
+        )
+    if not _SLUG_RE.match(slug):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid slug")
+    manager: BotManager = request.app.state.manager
+    meet_url = f"https://meet.google.com/{slug}"
+    try:
+        topic_key, _session = await manager.join(
+            meet_url, display_name=settings.bot_display_name,
+        )
+    except CapacityError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+    return JoinFromViewerResponse(topic_key=topic_key, bot_active=True)
 
 
 @router.get("/{slug}/static/{filename:path}")

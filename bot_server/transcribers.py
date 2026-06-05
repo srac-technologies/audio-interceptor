@@ -32,7 +32,10 @@ _HALLUCINATIONS: frozenset[str] = frozenset(
         "ご視聴ありがとうございました!",
         "ご視聴ありがとうございました!!",
         "ありがとうございました",
+        "ありがとうございました。",
+        "ありがとうございました!",
         "ご清聴ありがとうございました",
+        "ご清聴ありがとうございました。",
         "Thanks for watching!",
         "Thank you for watching",
         "thank you for watching.",
@@ -56,7 +59,12 @@ class TranscriptionResult:
 
 
 class Transcriber:
-    """faster-whisper wrapper. One model load per worker process."""
+    """Polymorphic wrapper: faster-whisper (default) or openai-whisper.
+
+    Backend pick via ``WHISPER_BACKEND`` env (``faster-whisper`` /
+    ``openai-whisper``). openai-whisper runs on PyTorch and works on
+    ROCm-built torch — set ``WHISPER_DEVICE=cuda`` to use the AMD GPU.
+    """
 
     def __init__(
         self,
@@ -66,27 +74,49 @@ class Transcriber:
         compute_type: str | None = None,
         language: str | None = None,
         beam_size: int = 5,
+        backend: str | None = None,
     ) -> None:
-        # Lazy import keeps the bot_server skeleton (Phase 1) usable without
-        # faster-whisper installed.
-        from faster_whisper import WhisperModel
-
         if device is None:
             device = os.environ.get("WHISPER_DEVICE", "auto")
+        if backend is None:
+            backend = os.environ.get("WHISPER_BACKEND", "faster-whisper").strip()
+        self._backend = backend
+        self._language = language
+        self._beam_size = beam_size
+
+        if backend == "openai-whisper":
+            import whisper  # PyTorch-backed; works with ROCm-built torch
+            # 'auto' → cuda if available, else cpu.
+            if device == "auto":
+                try:
+                    import torch
+                    device = "cuda" if torch.cuda.is_available() else "cpu"
+                except ImportError:
+                    device = "cpu"
+            logger.info(
+                "loading openai-whisper model=%s device=%s",
+                model_size, device,
+            )
+            self._fw_model = None
+            self._ow_model = whisper.load_model(model_size, device=device)
+            self._device = device
+            return
+
+        # default: faster-whisper
+        from faster_whisper import WhisperModel
         if compute_type is None:
-            # int8 keeps memory low on CPU; float16 is right for GPU.
             compute_type = os.environ.get(
                 "WHISPER_COMPUTE_TYPE", "int8" if device != "cuda" else "float16"
             )
         logger.info(
             "loading faster-whisper model=%s device=%s compute_type=%s",
-            model_size,
-            device,
-            compute_type,
+            model_size, device, compute_type,
         )
-        self._model = WhisperModel(model_size, device=device, compute_type=compute_type)
-        self._language = language
-        self._beam_size = beam_size
+        self._fw_model = WhisperModel(
+            model_size, device=device, compute_type=compute_type
+        )
+        self._ow_model = None
+        self._device = device
 
     def transcribe_pcm(
         self,
@@ -106,13 +136,38 @@ class Transcriber:
         audio = np.frombuffer(pcm_int16, dtype=np.int16).astype(np.float32) / 32768.0
 
         if sample_rate != 16000:
-            # faster-whisper expects 16 kHz; let scipy do the polyphase resample
-            # if available, otherwise fall back to numpy linear interp (lower
-            # fidelity but never imports scipy).
             audio = _resample_to_16k(audio, sample_rate)
             sample_rate = 16000
 
-        segments, info = self._model.transcribe(
+        if self._backend == "openai-whisper":
+            # openai-whisper takes float32 numpy in [-1, 1] at 16 kHz.
+            result = self._ow_model.transcribe(
+                audio,
+                language=self._language,
+                fp16=(self._device == "cuda"),
+                temperature=0.0,
+                condition_on_previous_text=False,
+                no_speech_threshold=0.6,
+            )
+            text = (result.get("text") or "").strip()
+            if not text:
+                return None
+            logger.info(
+                "whisper raw text: %r (lang=%s)",
+                text, result.get("language"),
+            )
+            if _is_hallucination(text):
+                logger.info("dropping hallucination: %r", text)
+                return None
+            return TranscriptionResult(
+                text=text,
+                language=result.get("language"),
+                duration_s=float(len(audio)) / 16000.0,
+                no_speech_prob=0.0,
+            )
+
+        # faster-whisper path
+        segments, info = self._fw_model.transcribe(
             audio,
             language=self._language,
             beam_size=self._beam_size,
@@ -130,10 +185,22 @@ class Transcriber:
                 max_no_speech = seg.no_speech_prob
             duration = max(duration, seg.end or duration)
         text = " ".join(text_parts).strip()
+        logger.info(
+            "whisper raw text: %r (parts=%d max_no_speech=%.2f)",
+            text, len(text_parts), max_no_speech,
+        )
         if not text:
             return None
+        # Whisper's own no_speech head — if the model itself says this
+        # segment is probably not speech, trust it. Filters out the bulk
+        # of "ありがとうございました" / "ご視聴..." hallucinations.
+        if max_no_speech > 0.6:
+            logger.info(
+                "dropping by no_speech_prob=%.2f: %r", max_no_speech, text,
+            )
+            return None
         if _is_hallucination(text):
-            logger.debug("dropping hallucination: %r", text)
+            logger.info("dropping hallucination: %r", text)
             return None
         return TranscriptionResult(
             text=text,

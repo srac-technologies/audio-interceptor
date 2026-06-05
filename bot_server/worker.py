@@ -62,7 +62,7 @@ async def _run(args: argparse.Namespace) -> int:
 
     source = MeetAudioSource(
         meet_url=args.meet_url,
-        bot_name=args.display_name or "Meeting Bot",
+        bot_name=args.display_name or "DELTA AI",
         profile_dir=args.profile_dir,
         chrome_channel=args.chrome_channel,
         headless=args.headless,

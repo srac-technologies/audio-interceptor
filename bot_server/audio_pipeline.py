@@ -142,9 +142,17 @@ class AudioPipeline:
 
     async def _process_chunk(self) -> None:
         chunk = self._buffer.take_chunk()
-        if self._buffer.is_silence(chunk):
-            logger.debug("dropping silent chunk (%d bytes)", len(chunk))
+        # Compute RMS once so we can log it regardless of the silence verdict.
+        import numpy as np
+        samples = np.frombuffer(chunk, dtype=np.int16)
+        rms = float(np.sqrt(np.mean(samples.astype(np.float32) ** 2))) if samples.size else 0.0
+        if rms < float(self._silence_rms_threshold):
+            logger.info(
+                "audio_pipeline: dropping silent chunk rms=%.1f (threshold=%d)",
+                rms, self._silence_rms_threshold,
+            )
             return
+        logger.info("audio_pipeline: transcribing chunk rms=%.1f", rms)
         loop = asyncio.get_running_loop()
         sample_rate = self._buffer.sample_rate
         result: TranscriptionResult | None = await loop.run_in_executor(

@@ -25,6 +25,9 @@ class Settings:
     dummy_publisher_enabled: bool
     dummy_publisher_interval_seconds: float
 
+    # Bot identity (display name shown in the Meet participants list).
+    bot_display_name: str
+
     # Phase 2: real worker subprocess settings.
     worker_python: str
     worker_module: str
@@ -73,6 +76,7 @@ def load_settings() -> Settings:
         # path working without launching Playwright + Whisper.
         dummy_publisher_enabled=_env_bool("DUMMY_PUBLISHER", False),
         dummy_publisher_interval_seconds=float(os.environ.get("DUMMY_INTERVAL", "5")),
+        bot_display_name=os.environ.get("BOT_DISPLAY_NAME", "DELTA AI"),
         worker_python=os.environ.get("WORKER_PYTHON", sys.executable),
         # Override for tests: WORKER_MODULE=bot_server._fake_worker swaps
         # in the no-Playwright fake worker.

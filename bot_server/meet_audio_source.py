@@ -117,10 +117,20 @@ _WALL_TEXT_JS = (
 )
 
 # Stealth defaults — Phase 0 receipts.
+#
+# We DO add fake media-stream flags here (unlike posture-feedback, which is a
+# camera-analysis app). Without `--use-fake-device-for-media-stream`, Chrome
+# under xvfb has no microphone hardware and Meet renders a "Microphone not
+# found" toast, then declines to establish the full WebRTC media path — no
+# remote audio tracks ever arrive. With the fake device, Meet sees a normal
+# (muted) mic and proceeds with the bidirectional session, so remote
+# participants' audio flows in.
 _DEFAULT_CHROME_ARGS = (
     "--autoplay-policy=no-user-gesture-required",
     "--disable-blink-features=AutomationControlled",
     "--disable-infobars",
+    "--use-fake-device-for-media-stream",
+    "--use-fake-ui-for-media-stream",
 )
 _DEFAULT_IGNORE_DEFAULT_ARGS = (
     "--enable-automation",
@@ -129,6 +139,50 @@ _DEFAULT_IGNORE_DEFAULT_ARGS = (
 _WEBDRIVER_OVERRIDE_JS = (
     "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"
 )
+
+# Pre-navigation RTC capture. Minimal scope: just wrap the constructor so we
+# observe every PC's "track" events and stash inbound MediaStreamTracks in
+# ``window.__meetCapturedTracks`` for the main bridge (installed
+# post-admission) to pipe into AudioContext. Meet 2026 renders participant
+# audio through Web Audio directly, never via <audio>/<video> elements, so
+# this is the only reliable hook for the audio path. Phase 0 spike showed
+# Meet's anti-bot rejects pre-injection of the FULL bridge, but a tiny RTC
+# wrap (no expose_function, no AudioWorklet, no expose globals beyond a
+# single array) has a small enough footprint that we accept the risk.
+_PRE_NAV_RTC_WRAP_JS = r"""
+(() => {
+  if (window.__meetRtcWrapped) return;
+  window.__meetRtcWrapped = true;
+  window.__meetCapturedTracks = window.__meetCapturedTracks || [];
+  try {
+    const Orig = window.RTCPeerConnection;
+    if (!Orig) return;
+    function Wrapped() {
+      const pc = new Orig(...arguments);
+      try {
+        pc.addEventListener("track", (ev) => {
+          if (ev && ev.track && ev.track.kind === "audio") {
+            window.__meetCapturedTracks.push(ev.track);
+            if (ev.streams && ev.streams.length) {
+              for (const s of ev.streams) {
+                s.addEventListener("addtrack", (e) => {
+                  if (e.track && e.track.kind === "audio") {
+                    window.__meetCapturedTracks.push(e.track);
+                  }
+                });
+              }
+            }
+          }
+        });
+      } catch (e) {}
+      return pc;
+    }
+    Wrapped.prototype = Orig.prototype;
+    Object.setPrototypeOf(Wrapped, Orig);
+    window.RTCPeerConnection = Wrapped;
+  } catch (e) {}
+})();
+"""
 
 
 def _looks_like_wall(text: str) -> bool:
@@ -155,7 +209,7 @@ class MeetAudioSource:
         self,
         *,
         meet_url: str,
-        bot_name: str = "Meeting Bot",
+        bot_name: str = "DELTA AI",
         profile_dir: str | None = None,
         chrome_channel: str = "chrome",
         headless: bool = False,
@@ -184,6 +238,7 @@ class MeetAudioSource:
         self._ephemeral_profile_dir: str | None = None
         # Speaker cache so we don't re-emit identical names.
         self._last_speaker: str | None = None
+        self._stats_task: asyncio.Task | None = None
 
     # ----- Public surface ----------------------------------------------------
 
@@ -217,6 +272,10 @@ class MeetAudioSource:
 
         # Defensive navigator.webdriver override — installed before any nav.
         await self._context.add_init_script(_WEBDRIVER_OVERRIDE_JS)
+        # Pre-nav RTC constructor wrap so Meet's PCs (created during join
+        # handshake) deposit their inbound audio tracks into a global array
+        # the main bridge picks up after admission.
+        await self._context.add_init_script(_PRE_NAV_RTC_WRAP_JS)
 
         pages = self._context.pages
         page = pages[0] if pages else await self._context.new_page()
@@ -254,6 +313,11 @@ class MeetAudioSource:
 
         await self._emit_status("joined", "bridge installed; awaiting audio")
         logger.info("meet_audio_source: joined topic, bridge installed")
+        # Start a background task that polls the in-page bridge stats so we
+        # can see (from logs) whether PCs / tracks / chunks are flowing.
+        self._stats_task = asyncio.create_task(
+            self._poll_bridge_stats(), name="bridge-stats"
+        )
 
     def events(self) -> AsyncIterator[AudioEvent]:
         """Async iterator over audio + speaker + status events.
@@ -273,6 +337,11 @@ class MeetAudioSource:
         if self._closed:
             return
         self._closed = True
+        if self._stats_task is not None:
+            self._stats_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await self._stats_task
+            self._stats_task = None
         await self._emit_status("left", "closing")
         # Sentinel so iterator wakes and exits.
         with contextlib.suppress(asyncio.QueueFull):
@@ -310,6 +379,94 @@ class MeetAudioSource:
             return
         ev = AudioEvent(kind="pcm", data=data, sample_rate=int(sample_rate))
         await self._enqueue(ev)
+
+    async def _poll_bridge_stats(self) -> None:
+        """Log bridge stats only when they CHANGE — quiet by default.
+
+        Also takes periodic screenshots so we can see what Meet is showing
+        when audio fails to arrive.
+        """
+        import os as _os
+        prev_summary: tuple | None = None
+        shot_dir = _os.environ.get("BOT_SHOT_DIR", "/tmp/bot-shots")
+        try:
+            _os.makedirs(shot_dir, exist_ok=True)
+        except Exception:  # noqa: BLE001
+            pass
+        shot_idx = 0
+        last_shot_at = 0.0
+        while not self._closed and self._page is not None:
+            try:
+                stats = await self._page.evaluate(
+                    "() => window.__meetAudioStats && window.__meetAudioStats()"
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("bridge stats evaluate failed: %s", exc)
+                stats = None
+            try:
+                probe = await self._page.evaluate(
+                    "() => window.__meetAudioProbeDom && window.__meetAudioProbeDom()"
+                )
+            except Exception:  # noqa: BLE001
+                probe = None
+            try:
+                track_info = await self._page.evaluate(
+                    "() => window.__meetTrackInfo && window.__meetTrackInfo()"
+                )
+            except Exception:  # noqa: BLE001
+                track_info = None
+
+            summary = None
+            if stats and probe:
+                tracks_summary = None
+                if track_info:
+                    tracks_summary = tuple(
+                        (t.get("muted"), t.get("enabled"), t.get("unmute_count"))
+                        for t in track_info
+                    )
+                summary = (
+                    stats.get("audio_context_state"),
+                    stats.get("worklet_loaded"),
+                    stats.get("pcs_constructed"),
+                    stats.get("audio_tracks_seen"),
+                    probe.get("audio_count"),
+                    probe.get("video_count"),
+                    tracks_summary,
+                )
+            if summary != prev_summary:
+                if stats:
+                    logger.info(
+                        "bridge_stats: ctx=%s worklet=%s pcs=%s audio_tracks=%s chunks=%s last_err=%s",
+                        stats.get("audio_context_state"),
+                        stats.get("worklet_loaded"),
+                        stats.get("pcs_constructed"),
+                        stats.get("audio_tracks_seen"),
+                        stats.get("chunks_sent"),
+                        stats.get("last_error"),
+                    )
+                if probe:
+                    logger.info(
+                        "dom_probe: <audio>=%s <video>=%s",
+                        probe.get("audio_count"),
+                        probe.get("video_count"),
+                    )
+                if track_info:
+                    logger.info("track_info: %s", track_info)
+                prev_summary = summary
+
+            # Periodic screenshot every 15s.
+            now = asyncio.get_event_loop().time()
+            if now - last_shot_at > 15:
+                path = f"{shot_dir}/{int(now)}_{shot_idx:03d}.png"
+                shot_idx += 1
+                try:
+                    await self._page.screenshot(path=path, full_page=False)
+                    logger.info("screenshot: %s", path)
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("screenshot failed: %s", exc)
+                last_shot_at = now
+
+            await asyncio.sleep(3.0)
 
     async def _on_speaker_name(self, name: str) -> None:
         if self._closed:

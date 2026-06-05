@@ -25,8 +25,13 @@
   const transcriptArrow = document.getElementById("transcript-arrow");
   const overlay = document.getElementById("transcript-overlay");
 
+  const joinPrompt = document.getElementById("join-prompt");
+  const joinBtn = document.getElementById("join-btn");
+  const joinError = document.getElementById("join-error");
+
   const seen = { mindmap: new Set(), tree: new Set(), kanban: new Set() };
   let currentMode = "mindmap";
+  let botActive = null;  // null=unknown, true/false=known
   let mermaidReady = false;
   let mermaidLoadingPromise = null;
   let mermaidCounter = 0;
@@ -149,6 +154,57 @@
     }
   }
 
+  function setBotActive(active) {
+    botActive = active;
+    if (active) {
+      joinPrompt.classList.add("hidden");
+    } else {
+      joinPrompt.classList.remove("hidden");
+      joinError.textContent = "";
+      joinBtn.disabled = false;
+      joinBtn.textContent = "DELTA AI を参加させる";
+    }
+  }
+
+  async function refreshBotStatus() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get("token");
+      const url = `/v/${encodeURIComponent(slug)}/status`
+        + (token ? `?token=${encodeURIComponent(token)}` : "");
+      const r = await fetch(url);
+      if (!r.ok) return;
+      const obj = await r.json();
+      setBotActive(!!obj.bot_active);
+    } catch (e) {
+      // network blip; leave UI as-is
+    }
+  }
+
+  joinBtn.addEventListener("click", async () => {
+    joinBtn.disabled = true;
+    joinBtn.textContent = "参加中…";
+    joinError.textContent = "";
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get("token");
+      const url = `/v/${encodeURIComponent(slug)}/join`
+        + (token ? `?token=${encodeURIComponent(token)}` : "");
+      const r = await fetch(url, { method: "POST" });
+      if (!r.ok) {
+        let detail = `HTTP ${r.status}`;
+        try { const j = await r.json(); detail = j.detail || detail; } catch (e) {}
+        throw new Error(detail);
+      }
+      // Don't toggle here — wait for the status:joining message so the
+      // UI reflects the actual bot lifecycle.
+    } catch (e) {
+      joinError.textContent = "失敗: " + e.message;
+      joinBtn.disabled = false;
+      joinBtn.textContent = "DELTA AI を参加させる";
+    }
+  });
+
   function connect() {
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
@@ -176,11 +232,19 @@
       } else if (t === "viewer_error") {
         setStatus("LLM ERR: " + (msg.detail || "").slice(0, 60), "err");
       } else if (t === "status") {
-        // Bot-side lifecycle. Show a soft hint.
-        if (msg.state === "left") {
+        // Bot-side lifecycle.
+        if (msg.state === "joining" || msg.state === "joined") {
+          setBotActive(true);
+          if (msg.state === "joined") {
+            setStatus("接続済 / bot in", "ok");
+          }
+        } else if (msg.state === "left") {
+          setBotActive(false);
           setStatus("bot 離脱", "warn");
-        } else if (msg.state === "joined") {
-          setStatus("接続済 / bot in", "ok");
+        } else if (msg.state === "error") {
+          setBotActive(false);
+          setStatus("ERR: " + (msg.detail || "").slice(0, 60), "err");
+          joinError.textContent = msg.detail || "";
         }
       }
     });
@@ -226,5 +290,6 @@
     transcriptArrow.textContent = overlay.classList.contains("collapsed") ? "▴" : "▾";
   });
 
+  refreshBotStatus();
   connect();
 })();

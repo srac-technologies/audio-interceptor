@@ -115,6 +115,39 @@
   }
   @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
+  /* Join prompt — shown when no bot is active for this slug. */
+  #join-prompt {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(31, 31, 29, 0.78);
+    backdrop-filter: blur(4px);
+    z-index: 20;
+  }
+  #join-prompt.hidden { display: none; }
+  .join-card {
+    background: #2c2c2a;
+    padding: 28px 36px;
+    border-radius: 8px;
+    border: 1px solid #444;
+    color: #eee;
+    text-align: center;
+    max-width: 480px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  .join-card h2 { margin: 0 0 8px; font-size: 17px; font-weight: 600; }
+  .join-card p { margin: 8px 0; color: #bbb; font-size: 13px; line-height: 1.55; }
+  .join-card code { background: #141413; padding: 1px 6px; border-radius: 3px;
+    color: var(--accent); font-family: ui-monospace, monospace; }
+  #join-btn {
+    margin-top: 18px;
+    background: var(--accent); color: #1f1f1d;
+    border: none; padding: 10px 22px; font-size: 14px; font-weight: 600;
+    border-radius: 4px; cursor: pointer; transition: filter 100ms;
+  }
+  #join-btn:hover:not(:disabled) { filter: brightness(1.1); }
+  #join-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .join-error { color: #ff6c6c; font-size: 12px; min-height: 16px; margin-top: 12px; }
+
   /* When the transcript mode is selected, the overlay hides and the
      stage rendering takes over the whole area. */
   body.transcript-mode #transcript-overlay { display: none; }
@@ -150,6 +183,14 @@
 
 <div id="app">
   <div id="stage"></div>
+  <div id="join-prompt" class="hidden">
+    <div class="join-card">
+      <h2>Bot がまだ参加していません</h2>
+      <p>このルーム (<code id="join-slug">__SLUG__</code>) で文字起こしを始めるには、ボットを Meet に参加させてください。</p>
+      <button id="join-btn">DELTA AI を参加させる</button>
+      <p id="join-error" class="join-error"></p>
+    </div>
+  </div>
   <div id="transcript-overlay">
     <header id="transcript-toggle">
       <strong>議事録</strong>
@@ -160,6 +201,6 @@
   </div>
 </div>
 
-<script src="./static/viewer.js"></script>
+<script src="/v/__SLUG__/static/viewer.js"></script>
 </body>
 </html>

@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>bot_server viewer — ブックマークレット</title>
+<style>
+  :root { --bg: #1f1f1d; --fg: #eee; --accent: #00ffaa; --muted: #999; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+    font-family: 'Hiragino Sans', 'Noto Sans CJK JP', sans-serif; line-height: 1.6; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 32px 24px; }
+  h1 { margin: 0 0 6px; font-size: 22px; }
+  h2 { font-size: 16px; margin: 28px 0 8px; color: var(--accent); }
+  p { color: #ccc; margin: 8px 0; }
+  code { font-family: ui-monospace, monospace; background: #141413; padding: 1px 6px;
+    border-radius: 3px; color: var(--accent); }
+  .drag {
+    display: inline-block;
+    background: var(--accent); color: #1f1f1d;
+    padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 16px;
+    text-decoration: none; cursor: grab; user-select: none;
+    box-shadow: 0 4px 12px rgba(0,255,170,0.18);
+  }
+  .drag:hover { filter: brightness(1.07); }
+  pre.code { background: #141413; padding: 14px 16px; border-radius: 6px;
+    border: 1px solid #2a2a28; overflow-x: auto; font-size: 12px;
+    font-family: ui-monospace, monospace; white-space: pre-wrap; word-break: break-all; }
+  .config {
+    background: #2a2a28; padding: 14px 16px; border-radius: 6px;
+    border: 1px solid #3a3a38; margin-top: 10px;
+  }
+  label { display: block; margin: 8px 0 4px; font-size: 12px; color: var(--muted); }
+  input {
+    width: 100%; box-sizing: border-box;
+    background: #141413; color: var(--fg); border: 1px solid #444;
+    padding: 8px 10px; font-family: ui-monospace, monospace; font-size: 13px;
+    border-radius: 4px;
+  }
+  ol { color: #ccc; padding-left: 22px; }
+  ol li { margin: 6px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Meet → viewer ブックマークレット</h1>
+<p>Google Meet のページ (<code>meet.google.com/xxx-yyyy-zzz</code>) を開いた状態でクリックすると、対応する viewer (<code>/v/&lt;meeting-code&gt;</code>) を新しいタブで開きます。</p>
+
+<h2>ブックマークバーにドラッグ</h2>
+<p>下のボタンをブックマークバーへドラッグ&ドロップしてください:</p>
+<p><a id="drag" class="drag" draggable="true">📌 Meet → viewer</a></p>
+
+<h2>サーバー設定</h2>
+<p>もし bot_server を別の host/port で動かしているなら、ここで値を変えると下のブックマークレットも自動更新されます。</p>
+<div class="config">
+  <label>サーバー origin (host:port)</label>
+  <input id="origin" type="text" value=""/>
+  <label>VIEWER_TOKEN (未設定なら空のまま)</label>
+  <input id="token" type="text" value=""/>
+</div>
+
+<h2>手動コピー</h2>
+<p>ブラウザによってはドラッグできないので、下のコードを「URL」欄に貼って新しいブックマークを作成してください:</p>
+<pre id="code" class="code"></pre>
+
+<h2>使い方</h2>
+<ol>
+  <li>このページのボタンをブックマークバーに保存</li>
+  <li><code>meet.google.com/xxx-yyyy-zzz</code> を開く</li>
+  <li>保存したブックマークをクリック → viewer が別タブで開く</li>
+  <li>viewer 画面で「DELTA AI を参加させる」を押すと bot が Meet に入場</li>
+</ol>
+
+<script>
+  const dragA = document.getElementById("drag");
+  const codeEl = document.getElementById("code");
+  const originEl = document.getElementById("origin");
+  const tokenEl = document.getElementById("token");
+
+  // Default to whatever origin served this page.
+  originEl.value = location.origin;
+
+  function build() {
+    const origin = originEl.value.replace(/\/+$/, "");
+    const token = tokenEl.value.trim();
+    const tokenQs = token ? "?token=" + encodeURIComponent(token) : "";
+    // Inline bookmarklet — keep ASCII-safe and compact.
+    const js = (
+      "(function(){"
+      + "var h=location.hostname,p=location.pathname;"
+      + "if(h.indexOf('meet.google.com')===-1){alert('Open a meet.google.com page first.');return;}"
+      + "var m=p.match(/^\\/([a-zA-Z0-9_-]{3,64})/);"
+      + "if(!m){alert('No meeting code in URL.');return;}"
+      + "window.open(" + JSON.stringify(origin + "/v/") + "+m[1]+" + JSON.stringify(tokenQs) + ",'_blank');"
+      + "})();"
+    );
+    const href = "javascript:" + encodeURI(js);
+    dragA.href = href;
+    codeEl.textContent = href;
+  }
+
+  originEl.addEventListener("input", build);
+  tokenEl.addEventListener("input", build);
+  build();
+</script>
+</div>
+</body>
+</html>

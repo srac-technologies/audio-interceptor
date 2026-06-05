@@ -68,7 +68,7 @@ Whisper モデルは初回 transcribe 時にダウンロードされます (`sma
 curl -X POST http://127.0.0.1:8765/bot/join \
   -H "Authorization: Bearer $BOT_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"meet_url":"https://meet.google.com/abc-defg-hij","display_name":"Audio Bot"}'
+  -d '{"meet_url":"https://meet.google.com/abc-defg-hij","display_name":"DELTA AI"}'
 ```
 
 ```json
