@@ -19,6 +19,7 @@ import logging
 import platform
 from pathlib import Path
 from datetime import datetime
+from typing import Dict, Optional
 from abc import ABC, abstractmethod
 
 logger = logging.getLogger(__name__)
@@ -372,6 +373,7 @@ class AudioInterceptor:
         self.on_transcript = on_transcript
         self.mic_muted = False
         self.backend = create_audio_backend()
+        self.recorded_chunks: Dict[str, list] = {"speaker": [], "mic": []}
 
         # Transcription Serviceの初期化（遅延初期化）
         self.transcription_service = None
@@ -478,6 +480,7 @@ class AudioInterceptor:
                         continue
 
                     self.write_wav(filename, audio_data)
+                    self.recorded_chunks[label].append(filename)
                     size_kb = len(audio_data) / 1024
                     logger.debug("Saved %s chunk %d: %s (%.1f KB)", label, chunk_index, filename.name, size_kb)
 
@@ -508,6 +511,47 @@ class AudioInterceptor:
                 wav_file.writeframes(pcm_data)
         except Exception as e:
             logger.error("Failed to write WAV file %s: %s", filename, e)
+
+    def merge_recording(self, output_path: str) -> Optional[str]:
+        """全チャンクを結合して1つのWAVファイルとして保存する。
+        speaker と mic の両方のチャンクを時系列順にミックスする。
+        Returns: 保存先パス or None (チャンクがない場合)
+        """
+        all_chunks = []
+        for label in ("speaker", "mic"):
+            for path in self.recorded_chunks.get(label, []):
+                if path.exists():
+                    all_chunks.append(path)
+
+        if not all_chunks:
+            logger.info("No recorded chunks to merge")
+            return None
+
+        # ファイル名のタイムスタンプ順にソート
+        all_chunks.sort(key=lambda p: p.name)
+
+        try:
+            output = Path(output_path)
+            output.parent.mkdir(parents=True, exist_ok=True)
+
+            with wave.open(str(output), 'wb') as out_wav:
+                out_wav.setnchannels(CHANNELS)
+                out_wav.setsampwidth(SAMPLE_WIDTH)
+                out_wav.setframerate(SAMPLE_RATE)
+
+                for chunk_path in all_chunks:
+                    try:
+                        with wave.open(str(chunk_path), 'rb') as in_wav:
+                            out_wav.writeframes(in_wav.readframes(in_wav.getnframes()))
+                    except Exception as e:
+                        logger.warning("Failed to read chunk %s: %s", chunk_path, e)
+
+            size_mb = output.stat().st_size / (1024 * 1024)
+            logger.info("Merged recording saved: %s (%.1f MB, %d chunks)", output, size_mb, len(all_chunks))
+            return str(output)
+        except Exception as e:
+            logger.error("Failed to merge recording: %s", e, exc_info=True)
+            return None
 
     def is_silent(self, filename, threshold=500):
         """音声ファイルが無音かどうかをチェック"""

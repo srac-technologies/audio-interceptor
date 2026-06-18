@@ -584,6 +584,7 @@
         <!-- 右側詳細 -->
         <div style="flex: 2; overflow-y: auto; padding: 0 10px; display: flex; flex-direction: column;">
             <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
+                <button id="downloadAudioBtn" style="background: #48bb78; color: white; padding: 8px 15px; display: none;">🎵 録音データをダウンロード</button>
                 <button id="downloadDocxBtn" style="background: #4299e1; color: white; padding: 8px 15px; display: none;">📥 Docxでダウンロード</button>
             </div>
             <div id="historyDetailContent">
@@ -1416,6 +1417,17 @@
         dlBtn.onclick = () => {
             window.open(`http://localhost:8000/history/${sessionId}/download/docx`);
         };
+
+        // 録音ダウンロードボタン
+        const audioDlBtn = document.getElementById('downloadAudioBtn');
+        if (data.session.recording_path) {
+            audioDlBtn.style.display = 'inline-block';
+            audioDlBtn.onclick = () => {
+                window.open(`http://localhost:8000/history/${sessionId}/download/audio`);
+            };
+        } else {
+            audioDlBtn.style.display = 'none';
+        }
 
         let html = '';
         

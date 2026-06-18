@@ -444,10 +444,23 @@ async def stop_recording(background_tasks: BackgroundTasks):
         return {"success": False, "message": "Not recording"}
     
     try:
+        # 録音データの結合（クリーンアップ前に実行）
+        merged_path = None
         if state.interceptor:
+            settings = database.get_settings()
+            save_dir = settings.get('save_dir', str(Path.home() / "Documents" / "MeetingLogs"))
+            recordings_dir = Path(save_dir) / "recordings"
+            session_id = state.current_session_id
+            if session_id:
+                output_file = recordings_dir / f"recording_{session_id}.wav"
+                merged_path = state.interceptor.merge_recording(str(output_file))
+                if merged_path:
+                    database.save_recording_path(session_id, merged_path)
+                    logger.info("Recording merged and saved: %s", merged_path)
+
             state.interceptor.cleanup()
             state.interceptor = None
-        
+
         # LLMパイプラインとSlackサービスのクリーンアップ
         if state.llm_pipeline:
             cache_size = len(state.llm_pipeline.researched_entities)
@@ -861,6 +874,26 @@ async def download_docx(session_id: int):
         path=tmp_path, 
         filename=filename,
         media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    )
+
+@app.get("/history/{session_id}/download/audio")
+async def download_audio(session_id: int):
+    """録音データ（結合WAV）のダウンロード"""
+    details = database.get_session_details(session_id)
+    if not details:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session = details['session']
+    recording_path = session.get('recording_path')
+
+    if not recording_path or not Path(recording_path).exists():
+        raise HTTPException(status_code=404, detail="Recording not found")
+
+    filename = f"recording_{session_id}.wav"
+    return FileResponse(
+        path=recording_path,
+        filename=filename,
+        media_type='audio/wav'
     )
 
 # --- WebSocket Helpers ---
